@@ -2,6 +2,8 @@
 
 A modern, privacy-focused web interface for interacting with Ollama AI models. This application provides a sleek, user-friendly chat interface that runs entirely in your browser while connecting directly to your local Ollama installation.
 
+![](https://raw.githubusercontent.com/xsukax/xsukax-Ollama-WebUI-Chat-Frontend/refs/heads/main/ScreenShot.png)
+
 ## Project Overview
 
 xsukax Ollama WebUI is a comprehensive web-based frontend for Ollama, designed to provide an intuitive chat experience with AI language models. The application offers a complete chat management system with real-time streaming responses, model management capabilities, and persistent conversation history—all while maintaining strict privacy standards through local-only operation.

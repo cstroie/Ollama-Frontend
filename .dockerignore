@@ -1,0 +1,70 @@
+# Git files
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Documentation (optional - keep if you want them in image)
+# README.md
+# LICENSE
+# CHANGELOG.md
+
+# Development files
+.env
+.env.local
+.env.*.local
+*.log
+*.pid
+*.seed
+*.pid.lock
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build artifacts
+dist/
+build/
+node_modules/
+*.tar.gz
+*.zip
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+coverage/
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+jenkins/
+.circleci/
+
+# Temporary files
+tmp/
+temp/
+cache/
+*.tmp
+*.bak
+*.backup
+
+# Docker files themselves (avoid recursion during build)
+.dockerignore
+
+# Python cache (if any)
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS generated files
+.Spotlight-V100
+.Trashes
+ehthumbs.db

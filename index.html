@@ -1383,10 +1383,10 @@
 
                   titleEl.textContent = title;
                   messageEl.textContent = message;
-                  modal.classList.add('show');
+                  this.showModal('notificationModal');
 
                   const handleClose = () => {
-                     modal.classList.remove('show');
+                     this.hideModal('notificationModal');
                      okBtn.removeEventListener('click', handleClose);
                      resolve();
                   };
@@ -1403,17 +1403,17 @@
 
                   titleEl.textContent = title;
                   messageEl.textContent = message;
-                  modal.classList.add('show');
+                  this.showModal('confirmationModal');
 
                   const handleCancel = () => {
-                     modal.classList.remove('show');
+                     this.hideModal('confirmationModal');
                      cancelBtn.removeEventListener('click', handleCancel);
                      confirmBtn.removeEventListener('click', handleConfirm);
                      resolve(false);
                   };
 
                   const handleConfirm = () => {
-                     modal.classList.remove('show');
+                     this.hideModal('confirmationModal');
                      cancelBtn.removeEventListener('click', handleCancel);
                      confirmBtn.removeEventListener('click', handleConfirm);
                      resolve(true);
@@ -1560,6 +1560,15 @@
             hideLoading() {
                document.getElementById('loadingOverlay').style.display = 'none';
             }
+
+            showModal(modalId) {
+               document.getElementById(modalId).classList.add('show');
+            }
+
+            hideModal(modalId) {
+               document.getElementById(modalId).classList.remove('show');
+            }
+
             showSaving() {
                const statusIndicator = document.getElementById('statusIndicator');
                const statusText = document.getElementById('statusText');
@@ -2311,10 +2320,10 @@
 
                this.updateConnectionDiagnostics();
                this.updateModelList();
-               modal.classList.add('show');
+               this.showModal('settingsModal');
             }
             hideSettings() {
-               document.getElementById('settingsModal').classList.remove('show');
+               this.hideModal('settingsModal');
                document.getElementById('terminal').classList.remove('visible');
             }
             updateConnectionDiagnostics() {

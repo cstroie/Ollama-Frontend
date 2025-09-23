@@ -2363,7 +2363,42 @@
                   )
                   .join('');
             }
-         async testConnection(){const testBtn=document.getElementById('testConnectionBtn');const originalText=testBtn.textContent;testBtn.textContent='Testing...';testBtn.disabled=true;try{const testUrl=document.getElementById('ollamaUrl').value;const response=await fetch(`${testUrl}/api/tags`,{method:'GET',headers:{'Content-Type':'application/json'}});if(response.ok){const data=await response.json();const modelList=data.models?.map(m=>m.name).join('\n')||'No models available';await this.showNotification('success','Connection Successful',`Found ${data.models?.length||0} models:\n\n${modelList}`)}else{await this.showNotification('error','Connection Failed',`HTTP ${response.status}: ${response.statusText}`)}}catch(error){let errorMessage='';if(error.name==='TypeError'&&error.message.includes('fetch')){errorMessage='CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Windows):\n1. Stop Ollama\n2. Start with: set OLLAMA_ORIGINS=* && ollama serve\n3. Or set environment: setx OLLAMA_ORIGINS "*"'}else{errorMessage=`Error: ${error.message}`}await this.showNotification('error','Connection Failed',errorMessage)}testBtn.textContent=originalText;testBtn.disabled=false;this.updateConnectionDiagnostics()}
+
+            async testConnection() {
+               const testBtn = document.getElementById('testConnectionBtn');
+               const originalText = testBtn.textContent;
+               testBtn.textContent = 'Testing...';
+               testBtn.disabled = true;
+
+               try {
+                  const testUrl = document.getElementById('ollamaUrl').value;
+                  const response = await fetch(`${testUrl}/api/tags`, {
+                     method: 'GET',
+                     headers: { 'Content-Type': 'application/json' }
+                  });
+
+                  if (response.ok) {
+                     const data = await response.json();
+                     const modelList = data.models?.map(m => m.name).join('\n') || 'No models available';
+                     await this.showNotification('success', 'Connection Successful', `Found ${data.models?.length || 0} models:\n\n${modelList}`);
+                  } else {
+                     await this.showNotification('error', 'Connection Failed', `HTTP ${response.status}: ${response.statusText}`);
+                  }
+               } catch (error) {
+                  let errorMessage = '';
+                  if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                     errorMessage = 'CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Windows):\n1. Stop Ollama\n2. Start with: set OLLAMA_ORIGINS=* && ollama serve\n3. Or set environment: setx OLLAMA_ORIGINS "*"';
+                  } else {
+                     errorMessage = `Error: ${error.message}`;
+                  }
+                  await this.showNotification('error', 'Connection Failed', errorMessage);
+               }
+
+               testBtn.textContent = originalText;
+               testBtn.disabled = false;
+               this.updateConnectionDiagnostics();
+            }
+
             async saveSettingsFromModal() {
                const ollamaUrl = document.getElementById('ollamaUrl').value;
                const temperature = parseFloat(document.getElementById('temperature').value);

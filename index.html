@@ -1821,6 +1821,12 @@
                   terminalOutput.appendChild(line);
                }
 
+               // Limit to last 50 lines to prevent memory bloat
+               const allLines = Array.from(terminalOutput.querySelectorAll('.terminal-line'));
+               if (allLines.length > 50) {
+                  allLines.slice(0, allLines.length - 50).forEach(line => line.remove());
+               }
+
                terminalOutput.scrollTop = terminalOutput.scrollHeight;
             }
             shouldUpdateLastLine(lastLineText, newLineText) {

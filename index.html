@@ -1441,6 +1441,7 @@
             constructor() {
                this.db = null;                           // IndexedDB database instance
                this.streamingUpdateThrottle = false;     // Throttle flag for streaming updates
+               this.lastStreamingUpdate = 0;             // Last streaming update timestamp
                this.currentStream = null;                // Current fetch stream controller
                this.state = {
                   currentChatId: null,                   // ID of currently active chat
@@ -1876,7 +1877,7 @@
             async loadModels() {
                try {
                   console.log(`Attempting to connect to Ollama at: ${this.state.settings.ollamaUrl}`);
-                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/tags`, {
+                  const response = await this.fetchWithTimeout(`${this.state.settings.ollamaUrl}/api/tags`, {
                      method: 'GET',
                      headers: { 'Content-Type': 'application/json' }
                   });
@@ -1990,7 +1991,7 @@
                this.addTerminalLine(`Pulling model: ${modelName}`, 'info');
 
                try {
-                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/pull`, {
+                  const response = await this.fetchWithTimeout(`${this.state.settings.ollamaUrl}/api/pull`, {
                      method: 'POST',
                      headers: { 'Content-Type': 'application/json' },
                      body: JSON.stringify({ name: modelName, stream: true })
@@ -2072,7 +2073,7 @@
                this.addTerminalLine(`Removing model: ${modelName}`, 'info');
 
                try {
-                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/delete`, {
+                  const response = await this.fetchWithTimeout(`${this.state.settings.ollamaUrl}/api/delete`, {
                      method: 'DELETE',
                      headers: { 'Content-Type': 'application/json' },
                      body: JSON.stringify({ name: modelName })
@@ -2365,7 +2366,7 @@
 
                try {
                   this.currentStream = new AbortController();
-                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/generate`, {
+                  const response = await this.fetchWithTimeout(`${this.state.settings.ollamaUrl}/api/generate`, {
                      method: 'POST',
                      headers: { 'Content-Type': 'application/json' },
                      body: JSON.stringify({
@@ -2474,26 +2475,32 @@
              */
             updateStreamingMessage(message) {
                // Throttle updates to prevent UI lag during rapid streaming
-               if (!this.streamingUpdateThrottle) {
-                  this.streamingUpdateThrottle = true;
-                  requestAnimationFrame(() => {
-                     const messageElements = document.querySelectorAll('.message.assistant');
-                     const lastMessageEl = messageElements[messageElements.length - 1];
-
-                     if (lastMessageEl) {
-                        const contentEl = lastMessageEl.querySelector('.message-text');
-                        if (contentEl) {
-                           let formattedContent = this.formatMessage(message.content);
-                           if (message.isStreaming) {
-                              formattedContent += '<span class="streaming-cursor">|</span>';
-                           }
-                           contentEl.innerHTML = formattedContent;
-                           this.scrollToBottom();
-                        }
-                     }
-                     this.streamingUpdateThrottle = false;
-                  });
+               const now = Date.now();
+               // Limit to ~60fps (16ms per frame)
+               if (this.streamingUpdateThrottle || (now - this.lastStreamingUpdate < 16)) {
+                  return;
                }
+               
+               this.streamingUpdateThrottle = true;
+               this.lastStreamingUpdate = now;
+               
+               requestAnimationFrame(() => {
+                  const messageElements = document.querySelectorAll('.message.assistant');
+                  const lastMessageEl = messageElements[messageElements.length - 1];
+
+                  if (lastMessageEl) {
+                     const contentEl = lastMessageEl.querySelector('.message-text');
+                     if (contentEl) {
+                        let formattedContent = this.formatMessage(message.content);
+                        if (message.isStreaming) {
+                           formattedContent += '<span class="streaming-cursor">|</span>';
+                        }
+                        contentEl.innerHTML = formattedContent;
+                        this.scrollToBottom();
+                     }
+                  }
+                  this.streamingUpdateThrottle = false;
+               });
             }
             /**
              * Builds a prompt string from chat messages for Ollama API.
@@ -2522,7 +2529,7 @@
             }
             /**
              * Renders the chat list in the sidebar, sorted by creation date descending.
-             * Adds click handlers for selection and deletion.
+             * Uses event delegation for better performance.
              */
             updateChatList() {
                const chatList = document.getElementById('chatList');
@@ -2533,6 +2540,7 @@
                   .forEach((chat) => {
                      const chatItem = document.createElement('div');
                      chatItem.className = `chat-item ${chat.id === this.state.currentChatId ? 'active' : ''}`;
+                     chatItem.dataset.chatId = chat.id;
 
                      const lastMessage = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null;
                      const preview = lastMessage
@@ -2548,15 +2556,6 @@
                         </div>
                         <button class="chat-delete" title="Delete chat">×</button>
                      `;
-
-                     chatItem.querySelector('.chat-content').addEventListener('click', () => {
-                        this.selectChat(chat.id);
-                     });
-
-                     chatItem.querySelector('.chat-delete').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        this.deleteChatHandler(chat.id);
-                     });
 
                      chatList.appendChild(chatItem);
                   });
@@ -2658,9 +2657,14 @@
              * @returns {string} Escaped HTML.
              */
             escapeHtml(text) {
-               const div = document.createElement('div');
-               div.textContent = text;
-               return div.innerHTML;
+               const map = {
+                  '&': '&amp;',
+                  '<': '&lt;',
+                  '>': '&gt;',
+                  '"': '&quot;',
+                  "'": '&#39;'
+               };
+               return text.replace(/[&<>"']/g, char => map[char]);
             }
             /**
              * Formats message content with basic Markdown support (code blocks, bold, italic, line breaks).
@@ -2723,6 +2727,30 @@
             scrollToBottom() {
                const container = document.getElementById('messagesContainer');
                container.scrollTop = container.scrollHeight;
+            }
+
+            /**
+             * Fetch with timeout support
+             * @param {string} url - URL to fetch
+             * @param {Object} options - Fetch options
+             * @param {number} timeout - Timeout in milliseconds (default: 30000)
+             * @returns {Promise<Response>} Fetch response
+             */
+            async fetchWithTimeout(url, options = {}, timeout = 30000) {
+               const controller = new AbortController();
+               const timeoutId = setTimeout(() => controller.abort(), timeout);
+               
+               try {
+                  const response = await fetch(url, {
+                     ...options,
+                     signal: controller.signal
+                  });
+                  clearTimeout(timeoutId);
+                  return response;
+               } catch (error) {
+                  clearTimeout(timeoutId);
+                  throw error;
+               }
             }
             /**
              * Shows the settings modal, populates fields, and updates diagnostics/model list.
@@ -2817,7 +2845,7 @@
 
                try {
                   const testUrl = document.getElementById('ollamaUrl').value;
-                  const response = await fetch(`${testUrl}/api/tags`, {
+                  const response = await this.fetchWithTimeout(`${testUrl}/api/tags`, {
                      method: 'GET',
                      headers: { 'Content-Type': 'application/json' }
                   });
@@ -2897,6 +2925,7 @@
                const sidebarToggle = document.getElementById('sidebarToggle');
                const sidebar = document.getElementById('sidebar');
                const themeToggle = document.getElementById('themeToggle');
+               const chatList = document.getElementById('chatList');
 
                // Handle message input submission (Enter key)
                messageInput.addEventListener('keydown', (e) => {
@@ -3006,6 +3035,20 @@
                      !sidebarToggle.contains(e.target)
                   ) {
                      sidebar.classList.remove('open');
+                  }
+               });
+
+               // Use event delegation for chat list items
+               chatList.addEventListener('click', (e) => {
+                  const chatItem = e.target.closest('.chat-item');
+                  if (chatItem) {
+                     const chatId = chatItem.dataset.chatId;
+                     if (e.target.classList.contains('chat-delete')) {
+                        e.stopPropagation();
+                        this.deleteChatHandler(chatId);
+                     } else {
+                        this.selectChat(chatId);
+                     }
                   }
                });
             }

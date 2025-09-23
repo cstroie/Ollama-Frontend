@@ -285,26 +285,6 @@
             transform: translateY(-1px);
          }
 
-         .theme-toggle {
-            padding: 8px 12px;
-            border: 1px solid var(--border-color);
-            background: var(--secondary-bg);
-            border-radius: var(--radius-small);
-            cursor: pointer;
-            transition: all 0.2s ease;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin: 8px 16px 0;
-            color: var(--text-primary);
-         }
-
-         .theme-toggle:hover {
-            background: var(--hover-bg);
-            border-color: var(--accent-bg);
-         }
-
          .theme-toggle .theme-icon {
             font-size: 16px;
          }
@@ -1331,11 +1311,11 @@
             <div class="chat-header">
                <div class="chat-title-header" id="chatTitle">Welcome to Ollama WebUI Chat</div>
                <div class="header-controls">
-                  <button class="control-btn" id="clearChatBtn">Clear Chat</button>
-                  <button class="theme-toggle" id="themeToggle">
+                  <button class="control-btn theme-toggle" id="themeToggle">
                      <span class="theme-icon" id="themeIcon">🌙</span>
                      <span>Dark Mode</span>
                   </button>
+                  <button class="control-btn" id="clearChatBtn">Clear Chat</button>
                   <button class="control-btn" id="settingsBtn">Settings</button>
                </div>
             </div>

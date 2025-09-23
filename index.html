@@ -1625,7 +1625,7 @@
 
                   if (response.ok) {
                      const data = await response.json();
-                     this.state.models = data.models || [];
+                     this.state.models = (data.models || []).sort((a, b) => a.name.localeCompare(b.name));
                      this.state.isConnected = true;
                      this.state.connectionError = null;
                      this.updateModelSelect();

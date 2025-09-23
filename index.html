@@ -1873,6 +1873,7 @@
                   const decoder = new TextDecoder();
                   let buffer = '';
 
+                  // Stream the response lines and parse JSON for progress updates
                   while (true) {
                      const { done, value } = await reader.read();
                      if (done) break;
@@ -1984,6 +1985,7 @@
                terminalOutput.scrollTop = terminalOutput.scrollHeight;
             }
             shouldUpdateLastLine(lastLineText, newLineText) {
+               // Extract the message part after timestamp
                const extractMessage = (line) => {
                   const match = line.match(/\[\d+:\d+:\d+\s*[AP]M\]\s*(.+)/);
                   return match ? match[1] : line;
@@ -1993,6 +1995,7 @@
                const newMessage = extractMessage(newLineText);
 
                if (lastMessage && newMessage) {
+                  // Normalize by removing percentage suffixes for comparison
                   const normalizeMessage = (msg) => msg.replace(/\s*\(\d+%\).*$/, '').trim();
                   const lastNormalized = normalizeMessage(lastMessage);
                   const newNormalized = normalizeMessage(newMessage);
@@ -2001,6 +2004,7 @@
                      return true;
                   }
 
+                  // Check for common progress patterns to allow updates
                   const progressPatterns = [
                      /^pulling\s+[a-f0-9]+/,
                      /^verifying\s+sha256/,
@@ -2539,6 +2543,7 @@
                const diagnosticsEl = document.getElementById('connectionDiagnostics');
                let diagnostics = [];
 
+               // Check overall connection status
                if (this.state.isConnected) {
                   diagnostics.push({
                      status: 'success',
@@ -2557,6 +2562,7 @@
                   }
                }
 
+               // Validate URL format
                const url = this.state.settings.ollamaUrl;
                if (!url.startsWith('http://') && !url.startsWith('https://')) {
                   diagnostics.push({
@@ -2570,6 +2576,7 @@
                   });
                }
 
+               // Check for default port
                if (url.includes(':11434')) {
                   diagnostics.push({
                      status: 'success',
@@ -2577,6 +2584,7 @@
                   });
                }
 
+               // Render diagnostics as HTML
                diagnosticsEl.innerHTML = diagnostics
                   .map(
                      (item) => `

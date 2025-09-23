@@ -1430,29 +1430,43 @@
          </div>
       </div>
       <script>
+         /**
+          * Main application class for the Ollama WebUI Chat
+          * Manages chat state, IndexedDB storage, UI updates, and Ollama API interactions
+          */
          class OllamaChatApp {
+            /**
+             * Initialize the application state and configuration
+             */
             constructor() {
-               this.db = null;
-               this.streamingUpdateThrottle = false;
-               this.currentStream = null;
+               this.db = null;                           // IndexedDB database instance
+               this.streamingUpdateThrottle = false;     // Throttle flag for streaming updates
+               this.currentStream = null;                // Current fetch stream controller
                this.state = {
-                  currentChatId: null,
-                  chats: {},
-                  models: [],
-                  selectedModel: '',
+                  currentChatId: null,                   // ID of currently active chat
+                  chats: {},                             // In-memory cache of all chats
+                  models: [],                            // Available Ollama models
+                  selectedModel: '',                     // Currently selected model
                   settings: {
-                     ollamaUrl: 'http://localhost:11434',
-                     temperature: 0.7,
-                     topP: 0.9
+                     ollamaUrl: 'http://localhost:11434', // Ollama API endpoint
+                     temperature: 0.7,                    // Model temperature setting (0-2)
+                     topP: 0.9                            // Model top-p setting (0-1)
                   },
-                  isConnected: false,
-                  connectionError: null,
-                  isStreaming: false,
-                  theme: 'light'
+                  isConnected: false,                    // Connection status to Ollama
+                  connectionError: null,                 // Detailed connection error info
+                  isStreaming: false,                    // Whether a response is streaming
+                  theme: 'light'                         // UI theme ('light' or 'dark')
                };
-               this.DB_NAME = 'OllamaChatDB';
-               this.DB_VERSION = 1;
+               this.DB_NAME = 'OllamaChatDB';            // IndexedDB database name
+               this.DB_VERSION = 1;                      // IndexedDB schema version
             }
+            /**
+             * Display a notification modal to the user
+             * @param {string} type - Notification type ('success', 'error', 'warning', 'info')
+             * @param {string} title - Notification title
+             * @param {string} message - Notification message content
+             * @returns {Promise} Resolves when notification is closed
+             */
             showNotification(type, title, message) {
                return new Promise((resolve) => {
                   const modal = document.getElementById('notificationModal');
@@ -1461,6 +1475,7 @@
                   const messageEl = document.getElementById('notificationMessage');
                   const okBtn = document.getElementById('notificationOkBtn');
 
+                  // Set icon based on notification type
                   icon.className = `notification-icon ${type}`;
                   switch (type) {
                      case 'success':
@@ -1476,10 +1491,12 @@
                         icon.textContent = 'ℹ';
                   }
 
+                  // Update modal content
                   titleEl.textContent = title;
                   messageEl.textContent = message;
                   this.showModal('notificationModal');
 
+                  // Handle close button click
                   const handleClose = () => {
                      this.hideModal('notificationModal');
                      okBtn.removeEventListener('click', handleClose);
@@ -1488,6 +1505,12 @@
                   okBtn.addEventListener('click', handleClose);
                });
             }
+            /**
+             * Display a confirmation modal to the user
+             * @param {string} title - Confirmation dialog title
+             * @param {string} message - Confirmation message content
+             * @returns {Promise<boolean>} Resolves with true if confirmed, false if cancelled
+             */
             showConfirmation(title, message) {
                return new Promise((resolve) => {
                   const modal = document.getElementById('confirmationModal');
@@ -1496,10 +1519,12 @@
                   const cancelBtn = document.getElementById('confirmationCancelBtn');
                   const confirmBtn = document.getElementById('confirmationConfirmBtn');
 
+                  // Update modal content
                   titleEl.textContent = title;
                   messageEl.textContent = message;
                   this.showModal('confirmationModal');
 
+                  // Handle cancel button click
                   const handleCancel = () => {
                      this.hideModal('confirmationModal');
                      cancelBtn.removeEventListener('click', handleCancel);
@@ -1507,6 +1532,7 @@
                      resolve(false);
                   };
 
+                  // Handle confirm button click
                   const handleConfirm = () => {
                      this.hideModal('confirmationModal');
                      cancelBtn.removeEventListener('click', handleCancel);
@@ -1518,6 +1544,10 @@
                   confirmBtn.addEventListener('click', handleConfirm);
                });
             }
+            /**
+             * Initialize IndexedDB database with required object stores
+             * @returns {Promise<IDBDatabase>} Resolves with the database instance
+             */
             async initDB() {
                return new Promise((resolve, reject) => {
                   const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
@@ -1529,24 +1559,32 @@
                      resolve(this.db);
                   };
 
+                  // Create database schema on first run or version upgrade
                   request.onupgradeneeded = (event) => {
                      this.db = event.target.result;
 
+                     // Create chats store with id as key and createdAt index
                      if (!this.db.objectStoreNames.contains('chats')) {
                         const chatStore = this.db.createObjectStore('chats', { keyPath: 'id' });
                         chatStore.createIndex('createdAt', 'createdAt', { unique: false });
                      }
 
+                     // Create settings store with key as primary key
                      if (!this.db.objectStoreNames.contains('settings')) {
                         this.db.createObjectStore('settings', { keyPath: 'key' });
                      }
 
+                     // Create appState store for session persistence
                      if (!this.db.objectStoreNames.contains('appState')) {
                         this.db.createObjectStore('appState', { keyPath: 'key' });
                      }
                   };
                });
             }
+            /**
+             * Save a chat object to IndexedDB and update in-memory cache
+             * @param {Object} chat - Chat object to save
+             */
             async saveChat(chat) {
                if (!this.db) return;
 
@@ -1560,6 +1598,9 @@
                   console.error('Error saving chat:', error);
                }
             }
+            /**
+             * Load all chats from IndexedDB into memory cache
+             */
             async loadChats() {
                if (!this.db) return;
 
@@ -1568,6 +1609,7 @@
                   const store = transaction.objectStore('chats');
                   const chats = await this.promisifyRequest(store.getAll());
 
+                  // Populate in-memory cache
                   this.state.chats = {};
                   chats.forEach((chat) => {
                      this.state.chats[chat.id] = chat;
@@ -1576,6 +1618,10 @@
                   console.error('Error loading chats:', error);
                }
             }
+            /**
+             * Delete a chat from IndexedDB and memory cache
+             * @param {string} chatId - ID of chat to delete
+             */
             async deleteChat(chatId) {
                if (!this.db) return;
 
@@ -1588,6 +1634,10 @@
                   console.error('Error deleting chat:', error);
                }
             }
+            /**
+             * Save application settings to IndexedDB
+             * @param {Object} settings - Settings object to save
+             */
             async saveSettings(settings) {
                if (!this.db) return;
 
@@ -1601,6 +1651,10 @@
                }
             }
 
+            /**
+             * Save theme preference to IndexedDB
+             * @param {string} theme - Theme value ('light' or 'dark')
+             */
             async saveTheme(theme) {
                if (!this.db) return;
 
@@ -1614,6 +1668,10 @@
                }
             }
 
+            /**
+             * Load theme preference from IndexedDB
+             * @returns {Promise<string>} Resolves with theme value ('light' or 'dark')
+             */
             async loadTheme() {
                if (!this.db) return 'light';
 
@@ -1628,6 +1686,10 @@
                }
             }
 
+            /**
+             * Apply theme to UI and update theme toggle button
+             * @param {string} theme - Theme to apply ('light' or 'dark')
+             */
             setTheme(theme) {
                document.documentElement.setAttribute('data-theme', theme);
                this.state.theme = theme;
@@ -1642,11 +1704,18 @@
                }
             }
 
+            /**
+             * Toggle between light and dark themes
+             */
             toggleTheme() {
                const newTheme = this.state.theme === 'light' ? 'dark' : 'light';
                this.setTheme(newTheme);
                this.saveTheme(newTheme);
             }
+            
+            /**
+             * Load application settings from IndexedDB
+             */
             async loadSettings() {
                if (!this.db) return;
 
@@ -1666,6 +1735,11 @@
                const savedTheme = await this.loadTheme();
                this.setTheme(savedTheme);
             }
+            /**
+             * Save application state values to IndexedDB
+             * @param {string} key - State key to save
+             * @param {*} value - State value to save
+             */
             async saveAppState(key, value) {
                if (!this.db) return;
 
@@ -1677,6 +1751,12 @@
                   console.error('Error saving app state:', error);
                }
             }
+            
+            /**
+             * Load application state values from IndexedDB
+             * @param {string} key - State key to load
+             * @returns {Promise<*>} Resolves with state value or null
+             */
             async loadAppState(key) {
                if (!this.db) return null;
 
@@ -1690,30 +1770,55 @@
                   return null;
                }
             }
+            /**
+             * Convert IndexedDB request to Promise for easier async/await usage
+             * @param {IDBRequest} request - IndexedDB request object
+             * @returns {Promise} Resolves with request result or rejects with error
+             */
             promisifyRequest(request) {
                return new Promise((resolve, reject) => {
                   request.onsuccess = () => resolve(request.result);
                   request.onerror = () => reject(request.error);
                });
             }
+            
+            /**
+             * Show loading overlay with optional message
+             * @param {string} message - Loading message to display
+             */
             showLoading(message = 'Loading...') {
                const overlay = document.getElementById('loadingOverlay');
                const text = document.getElementById('loadingText');
                text.textContent = message;
                overlay.style.display = 'flex';
             }
+            
+            /**
+             * Hide loading overlay
+             */
             hideLoading() {
                document.getElementById('loadingOverlay').style.display = 'none';
             }
 
+            /**
+             * Show modal by ID
+             * @param {string} modalId - ID of modal element to show
+             */
             showModal(modalId) {
                document.getElementById(modalId).classList.add('show');
             }
 
+            /**
+             * Hide modal by ID
+             * @param {string} modalId - ID of modal element to hide
+             */
             hideModal(modalId) {
                document.getElementById(modalId).classList.remove('show');
             }
 
+            /**
+             * Briefly show saving status in connection indicator
+             */
             showSaving() {
                const statusIndicator = document.getElementById('statusIndicator');
                const statusText = document.getElementById('statusText');
@@ -1728,6 +1833,10 @@
                   statusText.textContent = originalText;
                }, 1000);
             }
+            
+            /**
+             * Update connection status indicator based on current state
+             */
             updateConnectionStatus() {
                const statusIndicator = document.getElementById('statusIndicator');
                const statusText = document.getElementById('statusText');
@@ -1760,6 +1869,10 @@
                   }
                }
             }
+            /**
+             * Load available models from Ollama API
+             * Updates connection status and UI components on success/failure
+             */
             async loadModels() {
                try {
                   console.log(`Attempting to connect to Ollama at: ${this.state.settings.ollamaUrl}`);
@@ -1770,6 +1883,7 @@
 
                   if (response.ok) {
                      const data = await response.json();
+                     // Sort models alphabetically by name
                      this.state.models = (data.models || []).sort((a, b) => a.name.localeCompare(b.name));
                      this.state.isConnected = true;
                      this.state.connectionError = null;
@@ -1787,6 +1901,11 @@
                   this.updateConnectionStatus();
                }
             }
+            /**
+             * Classify connection errors for better user feedback
+             * @param {Error} error - Error object from fetch request
+             * @returns {string} Error type identifier
+             */
             getConnectionErrorMessage(error) {
                if (error.name === 'TypeError' && error.message.includes('fetch')) {
                   return 'CORS_ERROR';
@@ -1800,6 +1919,10 @@
                   return 'UNKNOWN_ERROR';
                }
             }
+            
+            /**
+             * Populate model selection dropdown with available models
+             */
             updateModelSelect() {
                const modelSelect = document.getElementById('modelSelect');
                modelSelect.innerHTML = '<option value="">Select Model...</option>';
@@ -1814,6 +1937,9 @@
                   modelSelect.appendChild(option);
                });
             }
+            /**
+             * Update model management list in settings modal
+             */
             updateModelList() {
                const modelList = document.getElementById('modelList');
                modelList.innerHTML = '';
@@ -1838,6 +1964,10 @@
                   modelList.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:20px">No models installed. Use the input above to pull a model.</div>';
                }
             }
+            /**
+             * Pull a model from Ollama registry with streaming progress updates
+             * @param {string} modelName - Name of model to pull
+             */
             async pullModel(modelName) {
                if (!modelName.trim()) {
                   await this.showNotification('warning', 'Invalid Input', 'Please enter a model name');
@@ -1849,6 +1979,7 @@
                const terminal = document.getElementById('terminal');
                const terminalOutput = document.getElementById('terminalOutput');
 
+               // Disable UI during operation
                addBtn.disabled = true;
                addBtn.textContent = 'Pulling...';
                addInput.disabled = true;
@@ -1888,6 +2019,7 @@
                               const data = JSON.parse(line);
                               if (data.status) {
                                  let statusText = data.status;
+                                 // Add percentage if available
                                  if (data.completed && data.total) {
                                     const percent = Math.round((data.completed / data.total) * 100);
                                     statusText += ` (${percent}%)`;
@@ -1914,10 +2046,15 @@
                   await this.showNotification('error', 'Download Failed', `Failed to pull model: ${error.message}`);
                }
 
+               // Re-enable UI
                addBtn.disabled = false;
                addBtn.textContent = 'Pull Model';
                addInput.disabled = false;
             }
+            /**
+             * Delete a model from Ollama with confirmation dialog
+             * @param {string} modelName - Name of model to delete
+             */
             async deleteModel(modelName) {
                const confirmed = await this.showConfirmation(
                   'Remove Model',
@@ -1943,6 +2080,7 @@
 
                   if (response.ok) {
                      this.addTerminalLine(`Successfully removed model: ${modelName}`, 'success');
+                     // Clear selection if deleted model was selected
                      if (this.state.selectedModel === modelName) {
                         this.state.selectedModel = '';
                         await this.saveAppState('selectedModel', '');
@@ -1958,6 +2096,12 @@
                   await this.showNotification('error', 'Removal Failed', `Failed to remove model: ${error.message}`);
                }
             }
+            /**
+             * Add a line to the terminal output with timestamp and type styling
+             * Implements line updating for progress messages to reduce clutter
+             * @param {string} text - Text to add to terminal
+             * @param {string} type - Line type ('info', 'success', 'error', 'warning')
+             */
             addTerminalLine(text, type = 'info') {
                const terminalOutput = document.getElementById('terminalOutput');
                const timestamp = new Date().toLocaleTimeString();
@@ -1966,6 +2110,7 @@
                const lines = terminalOutput.querySelectorAll('.terminal-line');
                const lastLine = lines[lines.length - 1];
 
+               // Check if we should update the last line instead of adding new one
                if (lastLine && this.shouldUpdateLastLine(lastLine.textContent, fullText)) {
                   lastLine.className = `terminal-line ${type}`;
                   lastLine.textContent = fullText;
@@ -1984,6 +2129,13 @@
 
                terminalOutput.scrollTop = terminalOutput.scrollHeight;
             }
+            /**
+             * Determine if a new terminal line should update the previous line
+             * Used for progress updates to avoid spamming the terminal
+             * @param {string} lastLineText - Text of the last terminal line
+             * @param {string} newLineText - Text of the new line to add
+             * @returns {boolean} True if the last line should be updated instead of adding new
+             */
             shouldUpdateLastLine(lastLineText, newLineText) {
                // Extract the message part after timestamp
                const extractMessage = (line) => {
@@ -2000,6 +2152,7 @@
                   const lastNormalized = normalizeMessage(lastMessage);
                   const newNormalized = normalizeMessage(newMessage);
 
+                  // Update if messages are the same (ignoring percentages)
                   if (lastNormalized === newNormalized && lastNormalized.length > 0) {
                      return true;
                   }
@@ -2021,6 +2174,12 @@
 
                return false;
             }
+            /**
+             * Format byte values into human-readable strings
+             * @param {number} bytes - Number of bytes to format
+             * @param {number} decimals - Number of decimal places (default: 2)
+             * @returns {string} Formatted byte string (e.g., "1.25 MB")
+             */
             formatBytes(bytes, decimals = 2) {
                if (bytes === 0) return '0 Bytes';
 
@@ -2031,6 +2190,9 @@
 
                return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
             }
+            /**
+             * Create a new chat session with initial state
+             */
             async createNewChat() {
                const chatId = 'chat_' + Date.now();
                const chat = {
@@ -2046,11 +2208,19 @@
                await this.saveAppState('currentChatId', chatId);
                this.updateUI();
             }
+            /**
+             * Select and activate a chat session
+             * @param {string} chatId - ID of chat to select
+             */
             async selectChat(chatId) {
                this.state.currentChatId = chatId;
                await this.saveAppState('currentChatId', chatId);
                this.updateUI();
             }
+            /**
+             * Handle chat deletion with confirmation dialog
+             * @param {string} chatId - ID of chat to delete
+             */
             async deleteChatHandler(chatId) {
                const confirmed = await this.showConfirmation(
                   'Delete Chat',
@@ -2059,6 +2229,7 @@
 
                if (confirmed) {
                   await this.deleteChat(chatId);
+                  // Clear current chat if deleted chat was active
                   if (this.state.currentChatId === chatId) {
                      this.state.currentChatId = null;
                      await this.saveAppState('currentChatId', null);
@@ -2066,6 +2237,9 @@
                   this.updateUI();
                }
             }
+            /**
+             * Clear all messages from the current chat with confirmation
+             */
             async clearChat() {
                if (this.state.currentChatId) {
                   const confirmed = await this.showConfirmation(
@@ -2081,11 +2255,17 @@
                   }
                }
             }
+            /**
+             * Copy text to clipboard with fallback for older browsers
+             * @param {string} text - Text to copy to clipboard
+             * @returns {Promise<boolean>} Resolves with true if successful
+             */
             async copyToClipboard(text) {
                try {
                   await navigator.clipboard.writeText(text);
                   return true;
                } catch (err) {
+                  // Fallback for older browsers
                   const textArea = document.createElement("textarea");
                   textArea.value = text;
                   textArea.style.position = "fixed";
@@ -2104,6 +2284,11 @@
                   }
                }
             }
+            /**
+             * Strip HTML formatting from content for plain text clipboard copy
+             * @param {string} content - HTML formatted content
+             * @returns {string} Plain text content
+             */
             stripFormatting(content) {
                return content
                   .replace(/<[^>]*>/g, '')
@@ -2113,6 +2298,9 @@
                   .replace(/&quot;/g, '"')
                   .replace(/&#39;/g, "'");
             }
+            /**
+             * Stop the current streaming response
+             */
             async stopStreaming() {
                if (this.currentStream) {
                   this.currentStream.abort();
@@ -2129,6 +2317,7 @@
                const messageInput = document.getElementById('messageInput');
                const message = messageInput.value.trim();
 
+               // Validate input and model selection
                if (!message || !this.state.selectedModel) {
                   if (!this.state.selectedModel) {
                      await this.showNotification('warning', 'No Model Selected', 'Please select a model first');
@@ -2136,6 +2325,7 @@
                   return;
                }
 
+               // Create new chat if none exists
                if (!this.state.currentChatId) {
                   await this.createNewChat();
                }
@@ -2149,6 +2339,7 @@
                };
                currentChat.messages.push(userMessage);
 
+               // Set chat title to first message if it's the first message
                if (currentChat.messages.length === 1) {
                   currentChat.title = message.length > 30 ? message.substring(0, 30) + '...' : message;
                }
@@ -2158,6 +2349,7 @@
                this.autoResize(messageInput);
                this.updateUI();
 
+               // Prepare for streaming response
                this.state.isStreaming = true;
                this.updateSendButton();
 
@@ -2230,6 +2422,7 @@
                      }
                   }
 
+                  // Handle any remaining buffer content
                   if (buffer.trim()) {
                      try {
                         const data = JSON.parse(buffer.trim());
@@ -2242,6 +2435,7 @@
                      }
                   }
 
+                  // Finalize streaming state
                   assistantMessage.isStreaming = false;
                   this.state.isStreaming = false;
                   this.updateSendButton();
@@ -2249,11 +2443,13 @@
                   this.updateUI();
                } catch (error) {
                   if (error.name === 'AbortError') {
+                     // User stopped the stream
                      assistantMessage.content += ' [Response stopped by user]';
                      assistantMessage.isStreaming = false;
                      await this.saveChat(currentChat);
                      this.updateUI();
                   } else {
+                     // Handle other errors
                      console.error('Error sending message:', error);
                      currentChat.messages.pop();
                      const errorMessage = {
@@ -2277,6 +2473,7 @@
              * @param {Object} message - The assistant message object.
              */
             updateStreamingMessage(message) {
+               // Throttle updates to prevent UI lag during rapid streaming
                if (!this.streamingUpdateThrottle) {
                   this.streamingUpdateThrottle = true;
                   requestAnimationFrame(() => {
@@ -2305,6 +2502,7 @@
              * @returns {string} The formatted prompt.
              */
             buildPrompt(messages) {
+               // Filter out any messages still streaming
                const validMessages = messages.filter((msg) => !msg.isStreaming);
                return validMessages
                   .map((msg) => {
@@ -2472,11 +2670,22 @@
             formatMessage(content) {
                if (!content) return '';
 
+               // Escape HTML to prevent XSS
                content = this.escapeHtml(content);
+               
+               // Format code blocks
                content = content.replace(/```([\s\S]*?)```/g, '<div class="code-block">$1</div>');
+               
+               // Format inline code
                content = content.replace(/`([^`]+)`/g, '<span class="inline-code">$1</span>');
+               
+               // Format bold text
                content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+               
+               // Format italic text
                content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+               
+               // Convert line breaks
                content = content.replace(/\n/g, '<br>');
 
                return content;
@@ -2689,6 +2898,7 @@
                const sidebar = document.getElementById('sidebar');
                const themeToggle = document.getElementById('themeToggle');
 
+               // Handle message input submission (Enter key)
                messageInput.addEventListener('keydown', (e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                      e.preventDefault();
@@ -2700,16 +2910,19 @@
                   }
                });
 
+               // Auto-resize message input as user types
                messageInput.addEventListener('input', () => {
                   this.autoResize(messageInput);
                });
 
+               // Handle model selection changes
                modelSelect.addEventListener('change', async (e) => {
                   this.state.selectedModel = e.target.value;
                   await this.saveAppState('selectedModel', e.target.value);
                   this.updateUI();
                });
 
+               // Handle send/stop button clicks
                sendBtn.addEventListener('click', () => {
                   if (this.state.isStreaming) {
                      this.stopStreaming();
@@ -2718,35 +2931,43 @@
                   }
                });
 
+               // Handle new chat button clicks
                newChatBtn.addEventListener('click', () => {
                   this.createNewChat();
                });
 
+               // Handle clear chat button clicks
                clearChatBtn.addEventListener('click', () => {
                   this.clearChat();
                });
 
+               // Handle settings button clicks
                settingsBtn.addEventListener('click', () => {
                   this.showSettings();
                });
 
+               // Handle cancel settings button clicks
                cancelSettingsBtn.addEventListener('click', () => {
                   this.hideSettings();
                });
 
+               // Handle save settings button clicks
                saveSettingsBtn.addEventListener('click', () => {
                   this.saveSettingsFromModal();
                });
 
+               // Handle test connection button clicks
                testConnectionBtn.addEventListener('click', () => {
                   this.testConnection();
                });
 
+               // Handle add model button clicks
                addModelBtn.addEventListener('click', () => {
                   const modelName = addModelInput.value.trim();
                   this.pullModel(modelName);
                });
 
+               // Handle Enter key in add model input
                addModelInput.addEventListener('keydown', (e) => {
                   if (e.key === 'Enter') {
                      e.preventDefault();
@@ -2755,24 +2976,29 @@
                   }
                });
 
+               // Handle terminal close button clicks
                terminalClose.addEventListener('click', () => {
                   document.getElementById('terminal').classList.remove('visible');
                });
 
+               // Handle clicking outside settings modal to close it
                settingsModal.addEventListener('click', (e) => {
                   if (e.target === settingsModal) {
                      this.hideSettings();
                   }
                });
 
+               // Handle sidebar toggle for mobile
                sidebarToggle.addEventListener('click', () => {
                   sidebar.classList.toggle('open');
                });
 
+               // Handle theme toggle button clicks
                themeToggle.addEventListener('click', () => {
                   this.toggleTheme();
                });
 
+               // Handle clicking outside sidebar to close it on mobile
                document.addEventListener('click', (e) => {
                   if (
                      window.innerWidth <= 768 &&

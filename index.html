@@ -2117,6 +2117,10 @@
                   this.updateSendButton();
                }
             }
+            /**
+             * Sends a user message to the selected model via Ollama API with streaming.
+             * Handles chat creation, prompt building, streaming parsing, and errors.
+             */
             async sendMessage() {
                const messageInput = document.getElementById('messageInput');
                const message = messageInput.value.trim();
@@ -2188,6 +2192,7 @@
                   const decoder = new TextDecoder();
                   let buffer = '';
 
+                  // Stream and parse response lines for real-time updates
                   while (true) {
                      const { done, value } = await reader.read();
                      if (done) break;
@@ -2262,6 +2267,11 @@
                   this.updateSendButton();
                }
             }
+            /**
+             * Updates the UI for a streaming assistant message with throttling.
+             * Formats content and adds cursor if streaming.
+             * @param {Object} message - The assistant message object.
+             */
             updateStreamingMessage(message) {
                if (!this.streamingUpdateThrottle) {
                   this.streamingUpdateThrottle = true;
@@ -2284,6 +2294,12 @@
                   });
                }
             }
+            /**
+             * Builds a prompt string from chat messages for Ollama API.
+             * Filters streaming messages and formats as Human/Assistant dialogue.
+             * @param {Array} messages - Array of message objects.
+             * @returns {string} The formatted prompt.
+             */
             buildPrompt(messages) {
                const validMessages = messages.filter((msg) => !msg.isStreaming);
                return validMessages
@@ -2293,12 +2309,19 @@
                   })
                   .join('\n\n') + '\n\nAssistant:';
             }
+            /**
+             * Updates all UI components: chat list, messages, title, and send button.
+             */
             updateUI() {
                this.updateChatList();
                this.updateMessages();
                this.updateChatTitle();
                this.updateSendButton();
             }
+            /**
+             * Renders the chat list in the sidebar, sorted by creation date descending.
+             * Adds click handlers for selection and deletion.
+             */
             updateChatList() {
                const chatList = document.getElementById('chatList');
                chatList.innerHTML = '';
@@ -2336,6 +2359,10 @@
                      chatList.appendChild(chatItem);
                   });
             }
+            /**
+             * Renders messages in the current chat or welcome message if no chat selected.
+             * Adds copy buttons and streaming cursor.
+             */
             updateMessages() {
                const container = document.getElementById('messagesContainer');
 
@@ -2394,6 +2421,9 @@
 
                this.scrollToBottom();
             }
+            /**
+             * Updates the chat title in the header based on current chat.
+             */
             updateChatTitle() {
                const titleEl = document.getElementById('chatTitle');
 
@@ -2404,6 +2434,9 @@
                   titleEl.textContent = 'Welcome to Ollama WebUI Chat';
                }
             }
+            /**
+             * Updates the send/stop button state based on streaming and connection.
+             */
             updateSendButton() {
                const sendBtn = document.getElementById('sendBtn');
 
@@ -2417,11 +2450,21 @@
                   sendBtn.disabled = !this.state.selectedModel || !this.state.isConnected;
                }
             }
+            /**
+             * Escapes HTML characters in text to prevent XSS.
+             * @param {string} text - The text to escape.
+             * @returns {string} Escaped HTML.
+             */
             escapeHtml(text) {
                const div = document.createElement('div');
                div.textContent = text;
                return div.innerHTML;
             }
+            /**
+             * Formats message content with basic Markdown support (code blocks, bold, italic, line breaks).
+             * @param {string} content - The raw message content.
+             * @returns {string} HTML-formatted content.
+             */
             formatMessage(content) {
                if (!content) return '';
 
@@ -2434,6 +2477,11 @@
 
                return content;
             }
+            /**
+             * Formats a timestamp relative to now (e.g., 'Just now', '2h ago') or date string.
+             * @param {Date} timestamp - The message timestamp.
+             * @returns {string} Formatted time string.
+             */
             formatTime(timestamp) {
                const now = new Date();
                const diff = now - new Date(timestamp);
@@ -2448,14 +2496,24 @@
                   return new Date(timestamp).toLocaleDateString();
                }
             }
+            /**
+             * Auto-resizes a textarea to fit content, max 120px height.
+             * @param {HTMLTextAreaElement} textarea - The textarea element.
+             */
             autoResize(textarea) {
                textarea.style.height = 'auto';
                textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
             }
+            /**
+             * Scrolls the messages container to the bottom.
+             */
             scrollToBottom() {
                const container = document.getElementById('messagesContainer');
                container.scrollTop = container.scrollHeight;
             }
+            /**
+             * Shows the settings modal, populates fields, and updates diagnostics/model list.
+             */
             showSettings() {
                const modal = document.getElementById('settingsModal');
 
@@ -2467,10 +2525,16 @@
                this.updateModelList();
                this.showModal('settingsModal');
             }
+            /**
+             * Hides the settings modal and terminal.
+             */
             hideSettings() {
                this.hideModal('settingsModal');
                document.getElementById('terminal').classList.remove('visible');
             }
+            /**
+             * Updates the connection diagnostics list in settings modal.
+             */
             updateConnectionDiagnostics() {
                const diagnosticsEl = document.getElementById('connectionDiagnostics');
                let diagnostics = [];
@@ -2525,6 +2589,9 @@
                   .join('');
             }
 
+            /**
+             * Tests connection to Ollama at the specified URL and shows results.
+             */
             async testConnection() {
                const testBtn = document.getElementById('testConnectionBtn');
                const originalText = testBtn.textContent;
@@ -2560,6 +2627,10 @@
                this.updateConnectionDiagnostics();
             }
 
+            /**
+             * Saves settings from the modal form with validation/clamping.
+             * Updates inputs to clamped values and reloads models.
+             */
             async saveSettingsFromModal() {
                const ollamaUrl = document.getElementById('ollamaUrl').value;
                let temperature = parseFloat(document.getElementById('temperature').value);
@@ -2589,6 +2660,9 @@
                await this.loadModels();
                await this.showNotification('success', 'Settings Saved', 'Your settings have been saved successfully');
             }
+            /**
+             * Sets up all event listeners for UI interactions (inputs, buttons, modals, etc.).
+             */
             setupEventListeners() {
                const messageInput = document.getElementById('messageInput');
                const modelSelect = document.getElementById('modelSelect');
@@ -2701,6 +2775,10 @@
                   }
                });
             }
+            /**
+             * Initializes the application: DB, settings, chats, session restore, models, events, UI.
+             * Handles errors gracefully with fallback.
+             */
             async init() {
                try {
                   this.showLoading('Initializing application...');

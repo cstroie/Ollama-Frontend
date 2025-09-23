@@ -1289,11 +1289,11 @@
                   <div class="troubleshooting-steps">
                      <div class="step">
                         <strong>1. Start Ollama with CORS enabled:</strong>
-                        <div class="code-snippet">export OLLAMA_ORIGINS=&quot;*&quot; && ollama serve</div>
+                        <div class="code-snippet">export OLLAMA_ORIGINS=&quot;*&quot; &amp;&amp; ollama serve</div>
                      </div>
                      <div class="step">
                         <strong>2. Or set environment variable permanently:</strong>
-                        <div class="code-snippet">echo 'export OLLAMA_ORIGINS="*"' >> ~/.bashrc</div>
+                        <div class="code-snippet">echo 'export OLLAMA_ORIGINS="*"' &gt;&gt; ~/.bashrc</div>
                         <div class="code-snippet">source ~/.bashrc</div>
                      </div>
                      <div class="step">
@@ -2328,7 +2328,7 @@
                   if (this.state.connectionError === 'CORS_ERROR') {
                      diagnostics.push({
                         status: 'warning',
-                        message: '⚠ CORS not enabled - Start Ollama with: export OLLAMA_ORIGINS=* && ollama serve'
+                        message: '⚠ CORS not enabled - Start Ollama with: export OLLAMA_ORIGINS=* &amp;&amp; ollama serve'
                      });
                   }
                }
@@ -2388,7 +2388,7 @@
                } catch (error) {
                   let errorMessage = '';
                   if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                     errorMessage = 'CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Linux):\n1. Stop Ollama\n2. Start with: export OLLAMA_ORIGINS=* && ollama serve\n3. Or set environment: echo \'export OLLAMA_ORIGINS="*"\' >> ~/.bashrc && source ~/.bashrc';
+                     errorMessage = 'CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Linux):\n1. Stop Ollama\n2. Start with: export OLLAMA_ORIGINS=* &amp;&amp; ollama serve\n3. Or set environment: echo \'export OLLAMA_ORIGINS="*"\' &gt;&gt; ~/.bashrc &amp;&amp; source ~/.bashrc';
                   } else {
                      errorMessage = `Error: ${error.message}`;
                   }

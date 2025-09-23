@@ -324,58 +324,1197 @@
          </div>
       </div>
       <script>
-         class OllamaChatApp{constructor(){this.db=null;this.streamingUpdateThrottle=false;this.currentStream=null;this.state={currentChatId:null,chats:{},models:[],selectedModel:'',settings:{ollamaUrl:'http://localhost:11434',temperature:0.7,topP:0.9},isConnected:false,connectionError:null,isStreaming:false};this.DB_NAME='OllamaChatDB';this.DB_VERSION=1}
-         showNotification(type,title,message){return new Promise((resolve)=>{const modal=document.getElementById('notificationModal');const icon=document.getElementById('notificationIcon');const titleEl=document.getElementById('notificationTitle');const messageEl=document.getElementById('notificationMessage');const okBtn=document.getElementById('notificationOkBtn');icon.className=`notification-icon ${type}`;switch(type){case'success':icon.textContent='✔';break;case'error':icon.textContent='✕';break;case'warning':icon.textContent='⚠';break;default:icon.textContent='ℹ'}titleEl.textContent=title;messageEl.textContent=message;modal.classList.add('show');const handleClose=()=>{modal.classList.remove('show');okBtn.removeEventListener('click',handleClose);resolve()};okBtn.addEventListener('click',handleClose)})}
-         showConfirmation(title,message){return new Promise((resolve)=>{const modal=document.getElementById('confirmationModal');const titleEl=document.getElementById('confirmationTitle');const messageEl=document.getElementById('confirmationMessage');const cancelBtn=document.getElementById('confirmationCancelBtn');const confirmBtn=document.getElementById('confirmationConfirmBtn');titleEl.textContent=title;messageEl.textContent=message;modal.classList.add('show');const handleCancel=()=>{modal.classList.remove('show');cancelBtn.removeEventListener('click',handleCancel);confirmBtn.removeEventListener('click',handleConfirm);resolve(false)};const handleConfirm=()=>{modal.classList.remove('show');cancelBtn.removeEventListener('click',handleCancel);confirmBtn.removeEventListener('click',handleConfirm);resolve(true)};cancelBtn.addEventListener('click',handleCancel);confirmBtn.addEventListener('click',handleConfirm)})}
-         async initDB(){return new Promise((resolve,reject)=>{const request=indexedDB.open(this.DB_NAME,this.DB_VERSION);request.onerror=()=>reject(new Error('Failed to open database'));request.onsuccess=()=>{this.db=request.result;resolve(this.db)};request.onupgradeneeded=(event)=>{this.db=event.target.result;if(!this.db.objectStoreNames.contains('chats')){const chatStore=this.db.createObjectStore('chats',{keyPath:'id'});chatStore.createIndex('createdAt','createdAt',{unique:false})}if(!this.db.objectStoreNames.contains('settings')){this.db.createObjectStore('settings',{keyPath:'key'})}if(!this.db.objectStoreNames.contains('appState')){this.db.createObjectStore('appState',{keyPath:'key'})}}})}
-         async saveChat(chat){if(!this.db)return;try{const transaction=this.db.transaction(['chats'],'readwrite');const store=transaction.objectStore('chats');await this.promisifyRequest(store.put(chat));this.state.chats[chat.id]=chat;this.showSaving()}catch(error){console.error('Error saving chat:',error)}}
-         async loadChats(){if(!this.db)return;try{const transaction=this.db.transaction(['chats'],'readonly');const store=transaction.objectStore('chats');const chats=await this.promisifyRequest(store.getAll());this.state.chats={};chats.forEach(chat=>{this.state.chats[chat.id]=chat})}catch(error){console.error('Error loading chats:',error)}}
-         async deleteChat(chatId){if(!this.db)return;try{const transaction=this.db.transaction(['chats'],'readwrite');const store=transaction.objectStore('chats');await this.promisifyRequest(store.delete(chatId));delete this.state.chats[chatId]}catch(error){console.error('Error deleting chat:',error)}}
-         async saveSettings(settings){if(!this.db)return;try{const transaction=this.db.transaction(['settings'],'readwrite');const store=transaction.objectStore('settings');await this.promisifyRequest(store.put({key:'main',...settings}));this.state.settings=settings}catch(error){console.error('Error saving settings:',error)}}
-         async loadSettings(){if(!this.db)return;try{const transaction=this.db.transaction(['settings'],'readonly');const store=transaction.objectStore('settings');const result=await this.promisifyRequest(store.get('main'));if(result){const{key,...settings}=result;this.state.settings={...this.state.settings,...settings}}}catch(error){console.error('Error loading settings:',error)}}
-         async saveAppState(key,value){if(!this.db)return;try{const transaction=this.db.transaction(['appState'],'readwrite');const store=transaction.objectStore('appState');await this.promisifyRequest(store.put({key,value}))}catch(error){console.error('Error saving app state:',error)}}
-         async loadAppState(key){if(!this.db)return null;try{const transaction=this.db.transaction(['appState'],'readonly');const store=transaction.objectStore('appState');const result=await this.promisifyRequest(store.get(key));return result?result.value:null}catch(error){console.error('Error loading app state:',error);return null}}
-         promisifyRequest(request){return new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)})}
-         showLoading(message='Loading...'){const overlay=document.getElementById('loadingOverlay');const text=document.getElementById('loadingText');text.textContent=message;overlay.style.display='flex'}
-         hideLoading(){document.getElementById('loadingOverlay').style.display='none'}
-         showSaving(){const statusIndicator=document.getElementById('statusIndicator');const statusText=document.getElementById('statusText');const originalClass=statusIndicator.className;const originalText=statusText.textContent;statusIndicator.className='status-indicator saving';statusText.textContent='Saving...';setTimeout(()=>{statusIndicator.className=originalClass;statusText.textContent=originalText},1000)}
-         updateConnectionStatus(){const statusIndicator=document.getElementById('statusIndicator');const statusText=document.getElementById('statusText');if(this.state.isConnected){statusIndicator.className='status-indicator connected';statusText.textContent=`Connected (${this.state.models.length} models)`}else{statusIndicator.className='status-indicator disconnected';if(this.state.connectionError){switch(this.state.connectionError){case'CORS_ERROR':statusText.textContent='CORS Error - Check setup';statusText.title='Click Settings for troubleshooting';break;case'NETWORK_ERROR':statusText.textContent='Network Error';break;case'NOT_FOUND':statusText.textContent='Ollama not found';break;case'SERVER_ERROR':statusText.textContent='Server Error';break;default:statusText.textContent='Connection Failed'}}else{statusText.textContent='Disconnected'}}}
-         async loadModels(){try{console.log(`Attempting to connect to Ollama at: ${this.state.settings.ollamaUrl}`);const response=await fetch(`${this.state.settings.ollamaUrl}/api/tags`,{method:'GET',headers:{'Content-Type':'application/json'}});if(response.ok){const data=await response.json();this.state.models=data.models||[];this.state.isConnected=true;this.state.connectionError=null;this.updateModelSelect();this.updateConnectionStatus();this.updateModelList();console.log(`Successfully loaded ${this.state.models.length} models`)}else{throw new Error(`HTTP ${response.status}: ${response.statusText}`)}}catch(error){console.error('Error loading models:',error);this.state.isConnected=false;this.state.connectionError=this.getConnectionErrorMessage(error);this.updateConnectionStatus()}}
-         getConnectionErrorMessage(error){if(error.name==='TypeError'&&error.message.includes('fetch')){return'CORS_ERROR'}else if(error.message.includes('NetworkError')){return'NETWORK_ERROR'}else if(error.message.includes('404')){return'NOT_FOUND'}else if(error.message.includes('500')){return'SERVER_ERROR'}else{return'UNKNOWN_ERROR'}}
-         updateModelSelect(){const modelSelect=document.getElementById('modelSelect');modelSelect.innerHTML='<option value="">Select Model...</option>';this.state.models.forEach(model=>{const option=document.createElement('option');option.value=model.name;option.textContent=model.name;if(model.name===this.state.selectedModel){option.selected=true}modelSelect.appendChild(option)})}
-         updateModelList(){const modelList=document.getElementById('modelList');modelList.innerHTML='';this.state.models.forEach(model=>{const modelItem=document.createElement('div');modelItem.className='model-item';const sizeText=model.size?this.formatBytes(model.size):'Size unknown';modelItem.innerHTML=`<div class="model-info"><div class="model-name">${this.escapeHtml(model.name)}</div><div class="model-size">${sizeText} • Modified: ${new Date(model.modified_at).toLocaleDateString()}</div></div><div class="model-actions"><button class="model-btn danger" onclick="app.deleteModel('${model.name}')">Remove</button></div>`;modelList.appendChild(modelItem)});if(this.state.models.length===0){modelList.innerHTML='<div style="text-align:center;color:var(--text-secondary);padding:20px">No models installed. Use the input above to pull a model.</div>'}}
-         async pullModel(modelName){if(!modelName.trim()){await this.showNotification('warning','Invalid Input','Please enter a model name');return}const addBtn=document.getElementById('addModelBtn');const addInput=document.getElementById('addModelInput');const terminal=document.getElementById('terminal');const terminalOutput=document.getElementById('terminalOutput');addBtn.disabled=true;addBtn.textContent='Pulling...';addInput.disabled=true;terminal.classList.add('visible');terminalOutput.innerHTML='';this.addTerminalLine('Starting model pull process...','info');this.addTerminalLine(`Pulling model: ${modelName}`,'info');try{const response=await fetch(`${this.state.settings.ollamaUrl}/api/pull`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:modelName,stream:true})});if(!response.ok){throw new Error(`HTTP ${response.status}: ${response.statusText}`)}const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';while(true){const{done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const lines=buffer.split('\n');buffer=lines.pop()||'';for(const line of lines){if(line.trim()){try{const data=JSON.parse(line);if(data.status){let statusText=data.status;if(data.completed&&data.total){const percent=Math.round((data.completed/data.total)*100);statusText+=` (${percent}%)`}this.addTerminalLine(statusText,'info')}if(data.error){this.addTerminalLine(`Error: ${data.error}`,'error')}}catch(parseError){console.warn('Failed to parse pull response:',line)}}}}this.addTerminalLine(`Successfully pulled model: ${modelName}`,'success');addInput.value='';await this.loadModels();await this.showNotification('success','Model Downloaded',`Successfully pulled model: ${modelName}`)}catch(error){console.error('Error pulling model:',error);this.addTerminalLine(`Failed to pull model: ${error.message}`,'error');await this.showNotification('error','Download Failed',`Failed to pull model: ${error.message}`)}addBtn.disabled=false;addBtn.textContent='Pull Model';addInput.disabled=false}
-         async deleteModel(modelName){const confirmed=await this.showConfirmation('Remove Model',`Are you sure you want to remove the model "${modelName}"? This action cannot be undone.`);if(!confirmed)return;const terminal=document.getElementById('terminal');const terminalOutput=document.getElementById('terminalOutput');terminal.classList.add('visible');terminalOutput.innerHTML='';this.addTerminalLine('Starting model deletion process...','info');this.addTerminalLine(`Removing model: ${modelName}`,'info');try{const response=await fetch(`${this.state.settings.ollamaUrl}/api/delete`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:modelName})});if(response.ok){this.addTerminalLine(`Successfully removed model: ${modelName}`,'success');if(this.state.selectedModel===modelName){this.state.selectedModel='';await this.saveAppState('selectedModel','')}await this.loadModels();await this.showNotification('success','Model Removed',`Successfully removed model: ${modelName}`)}else{throw new Error(`HTTP ${response.status}: ${response.statusText}`)}}catch(error){console.error('Error deleting model:',error);this.addTerminalLine(`Failed to remove model: ${error.message}`,'error');await this.showNotification('error','Removal Failed',`Failed to remove model: ${error.message}`)}}
-         addTerminalLine(text,type='info'){const terminalOutput=document.getElementById('terminalOutput');const timestamp=new Date().toLocaleTimeString();const fullText=`[${timestamp}] ${text}`;const lines=terminalOutput.querySelectorAll('.terminal-line');const lastLine=lines[lines.length-1];if(lastLine&&this.shouldUpdateLastLine(lastLine.textContent,fullText)){lastLine.className=`terminal-line ${type}`;lastLine.textContent=fullText}else{const line=document.createElement('div');line.className=`terminal-line ${type}`;line.textContent=fullText;terminalOutput.appendChild(line)}terminalOutput.scrollTop=terminalOutput.scrollHeight}
-         shouldUpdateLastLine(lastLineText,newLineText){const extractMessage=(line)=>{const match=line.match(/\[\d+:\d+:\d+\s*[AP]M\]\s*(.+)/);return match?match[1]:line};const lastMessage=extractMessage(lastLineText);const newMessage=extractMessage(newLineText);if(lastMessage&&newMessage){const normalizeMessage=(msg)=>msg.replace(/\s*\(\d+%\).*$/,'').trim();const lastNormalized=normalizeMessage(lastMessage);const newNormalized=normalizeMessage(newMessage);if(lastNormalized===newNormalized&&lastNormalized.length>0){return true}const progressPatterns=[/^pulling\s+[a-f0-9]+/,/^verifying\s+sha256/,/^writing\s+manifest/,/^removing\s+/];for(const pattern of progressPatterns){if(pattern.test(lastNormalized)&&pattern.test(newNormalized)){return true}}}return false}
-         formatBytes(bytes,decimals=2){if(bytes===0)return'0 Bytes';const k=1024;const dm=decimals<0?0:decimals;const sizes=['Bytes','KB','MB','GB','TB'];const i=Math.floor(Math.log(bytes)/Math.log(k));return parseFloat((bytes/Math.pow(k,i)).toFixed(dm))+' '+sizes[i]}
-         async createNewChat(){const chatId='chat_'+Date.now();const chat={id:chatId,title:'New Chat',messages:[],model:this.state.selectedModel,createdAt:new Date()};await this.saveChat(chat);this.state.currentChatId=chatId;await this.saveAppState('currentChatId',chatId);this.updateUI()}
-         async selectChat(chatId){this.state.currentChatId=chatId;await this.saveAppState('currentChatId',chatId);this.updateUI()}
-         async deleteChatHandler(chatId){const confirmed=await this.showConfirmation('Delete Chat','Are you sure you want to delete this chat? This action cannot be undone.');if(confirmed){await this.deleteChat(chatId);if(this.state.currentChatId===chatId){this.state.currentChatId=null;await this.saveAppState('currentChatId',null)}this.updateUI()}}
-         async clearChat(){if(this.state.currentChatId){const confirmed=await this.showConfirmation('Clear Chat','Are you sure you want to clear all messages in this chat?');if(confirmed){const currentChat=this.state.chats[this.state.currentChatId];currentChat.messages=[];await this.saveChat(currentChat);this.updateUI()}}}
-         async copyToClipboard(text){try{await navigator.clipboard.writeText(text);return true}catch(err){const textArea=document.createElement("textarea");textArea.value=text;textArea.style.position="fixed";textArea.style.left="-999999px";document.body.appendChild(textArea);textArea.focus();textArea.select();try{document.execCommand('copy');document.body.removeChild(textArea);return true}catch(err){document.body.removeChild(textArea);return false}}}
-         stripFormatting(content){return content.replace(/<[^>]*>/g,'').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'")}
-         async stopStreaming(){if(this.currentStream){this.currentStream.abort();this.currentStream=null;this.state.isStreaming=false;this.updateSendButton()}}
-         async sendMessage(){const messageInput=document.getElementById('messageInput');const message=messageInput.value.trim();if(!message||!this.state.selectedModel){if(!this.state.selectedModel){await this.showNotification('warning','No Model Selected','Please select a model first')}return}if(!this.state.currentChatId){await this.createNewChat()}const currentChat=this.state.chats[this.state.currentChatId];const userMessage={id:'msg_'+Date.now(),role:'user',content:message,timestamp:new Date()};currentChat.messages.push(userMessage);if(currentChat.messages.length===1){currentChat.title=message.length>30?message.substring(0,30)+'...':message}await this.saveChat(currentChat);messageInput.value='';this.autoResize(messageInput);this.updateUI();this.state.isStreaming=true;this.updateSendButton();const assistantMessage={id:'msg_'+Date.now(),role:'assistant',content:'',timestamp:new Date(),isStreaming:true};currentChat.messages.push(assistantMessage);this.updateUI();try{this.currentStream=new AbortController();const response=await fetch(`${this.state.settings.ollamaUrl}/api/generate`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:this.state.selectedModel,prompt:this.buildPrompt(currentChat.messages.slice(0,-1)),stream:true,options:{temperature:this.state.settings.temperature,top_p:this.state.settings.topP}}),signal:this.currentStream.signal});if(!response.ok){throw new Error(`HTTP ${response.status}: ${response.statusText}`)}const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';while(true){const{done,value}=await reader.read();if(done)break;const chunk=decoder.decode(value,{stream:true});buffer+=chunk;const lines=buffer.split('\n');buffer=lines.pop()||'';for(const line of lines){const trimmedLine=line.trim();if(trimmedLine){try{const data=JSON.parse(trimmedLine);if(data.response){assistantMessage.content+=data.response;this.updateStreamingMessage(assistantMessage)}if(data.done){assistantMessage.isStreaming=false;this.state.isStreaming=false;this.updateSendButton();await this.saveChat(currentChat);this.updateUI();return}}catch(parseError){console.warn('Failed to parse streaming response line:',trimmedLine)}}}}if(buffer.trim()){try{const data=JSON.parse(buffer.trim());if(data.response){assistantMessage.content+=data.response;this.updateStreamingMessage(assistantMessage)}}catch(parseError){console.warn('Failed to parse final buffer:',buffer)}}assistantMessage.isStreaming=false;this.state.isStreaming=false;this.updateSendButton();await this.saveChat(currentChat);this.updateUI()}catch(error){if(error.name==='AbortError'){assistantMessage.content+=' [Response stopped by user]';assistantMessage.isStreaming=false;await this.saveChat(currentChat);this.updateUI()}else{console.error('Error sending message:',error);currentChat.messages.pop();const errorMessage={id:'msg_'+Date.now(),role:'assistant',content:'Sorry, I encountered an error while processing your request. Please check your connection to Ollama.',timestamp:new Date()};currentChat.messages.push(errorMessage);await this.saveChat(currentChat);this.updateUI();await this.showNotification('error','Message Error','Failed to send message. Please check your connection to Ollama.')}this.state.isStreaming=false;this.updateSendButton()}}
-         updateStreamingMessage(message){if(!this.streamingUpdateThrottle){this.streamingUpdateThrottle=true;requestAnimationFrame(()=>{const messageElements=document.querySelectorAll('.message.assistant');const lastMessageEl=messageElements[messageElements.length-1];if(lastMessageEl){const contentEl=lastMessageEl.querySelector('.message-text');if(contentEl){let formattedContent=this.formatMessage(message.content);if(message.isStreaming){formattedContent+='<span class="streaming-cursor">|</span>'}contentEl.innerHTML=formattedContent;this.scrollToBottom()}}this.streamingUpdateThrottle=false})}}
-         buildPrompt(messages){const validMessages=messages.filter(msg=>!msg.isStreaming);return validMessages.map(msg=>{const role=msg.role==='user'?'Human':'Assistant';return`${role}: ${msg.content}`}).join('\n\n')+'\n\nAssistant:'}
-         updateUI(){this.updateChatList();this.updateMessages();this.updateChatTitle();this.updateSendButton()}
-         updateChatList(){const chatList=document.getElementById('chatList');chatList.innerHTML='';Object.values(this.state.chats).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).forEach(chat=>{const chatItem=document.createElement('div');chatItem.className=`chat-item ${chat.id===this.state.currentChatId?'active':''}`;const lastMessage=chat.messages.length>0?chat.messages[chat.messages.length-1]:null;const preview=lastMessage?(lastMessage.content.length>50?lastMessage.content.substring(0,50)+'...':lastMessage.content):'No messages yet';chatItem.innerHTML=`<div class="chat-content"><div class="chat-title">${this.escapeHtml(chat.title)}</div><div class="chat-preview">${this.escapeHtml(preview)}</div></div><button class="chat-delete" title="Delete chat">×</button>`;chatItem.querySelector('.chat-content').addEventListener('click',()=>{this.selectChat(chat.id)});chatItem.querySelector('.chat-delete').addEventListener('click',(e)=>{e.stopPropagation();this.deleteChatHandler(chat.id)});chatList.appendChild(chatItem)})}
-         updateMessages(){const container=document.getElementById('messagesContainer');if(!this.state.currentChatId){container.innerHTML=`<div class="message assistant"><div class="message-avatar">AI</div><div class="message-content"><div class="message-text">Hello! I'm your AI assistant. Please select a model from the sidebar to start chatting.</div><div class="message-time">Just now</div></div></div>`;return}const currentChat=this.state.chats[this.state.currentChatId];container.innerHTML='';currentChat.messages.forEach(message=>{const messageEl=document.createElement('div');messageEl.className=`message ${message.role}`;const avatar=message.role==='user'?'You':'AI';const formattedContent=this.formatMessage(message.content);const timeStr=this.formatTime(message.timestamp);let messageContent=formattedContent;if(message.isStreaming){messageContent+='<span class="streaming-cursor">|</span>'}messageEl.innerHTML=`<div class="message-avatar">${avatar}</div><div class="message-content"><button class="copy-btn" title="Copy message">📋</button><div class="message-text">${messageContent}</div><div class="message-time">${timeStr}</div></div>`;const copyBtn=messageEl.querySelector('.copy-btn');copyBtn.addEventListener('click',async()=>{const plainText=this.stripFormatting(message.content);const success=await this.copyToClipboard(plainText);if(success){copyBtn.textContent='✓';setTimeout(()=>{copyBtn.textContent='📋'},2000)}});container.appendChild(messageEl)});this.scrollToBottom()}
-         updateChatTitle(){const titleEl=document.getElementById('chatTitle');if(this.state.currentChatId){const currentChat=this.state.chats[this.state.currentChatId];titleEl.textContent=currentChat.title}else{titleEl.textContent='Welcome to xsukax Ollama WebUI Chat'}}
-         updateSendButton(){const sendBtn=document.getElementById('sendBtn');if(this.state.isStreaming){sendBtn.className='stop-btn';sendBtn.innerHTML='■';sendBtn.disabled=false}else{sendBtn.className='send-btn';sendBtn.innerHTML='➤';sendBtn.disabled=!this.state.selectedModel||!this.state.isConnected}}
-         escapeHtml(text){const div=document.createElement('div');div.textContent=text;return div.innerHTML}
-         formatMessage(content){if(!content)return'';content=this.escapeHtml(content);content=content.replace(/```([\s\S]*?)```/g,'<div class="code-block">$1</div>');content=content.replace(/`([^`]+)`/g,'<span class="inline-code">$1</span>');content=content.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');content=content.replace(/\*(.*?)\*/g,'<em>$1</em>');content=content.replace(/\n/g,'<br>');return content}
-         formatTime(timestamp){const now=new Date();const diff=now-new Date(timestamp);if(diff<60000){return'Just now'}else if(diff<3600000){return Math.floor(diff/60000)+'m ago'}else if(diff<86400000){return Math.floor(diff/3600000)+'h ago'}else{return new Date(timestamp).toLocaleDateString()}}
-         autoResize(textarea){textarea.style.height='auto';textarea.style.height=Math.min(textarea.scrollHeight,120)+'px'}
-         scrollToBottom(){const container=document.getElementById('messagesContainer');container.scrollTop=container.scrollHeight}
-         showSettings(){const modal=document.getElementById('settingsModal');document.getElementById('ollamaUrl').value=this.state.settings.ollamaUrl;document.getElementById('temperature').value=this.state.settings.temperature;document.getElementById('topP').value=this.state.settings.topP;this.updateConnectionDiagnostics();this.updateModelList();modal.classList.add('show')}
-         hideSettings(){document.getElementById('settingsModal').classList.remove('show');document.getElementById('terminal').classList.remove('visible')}
-         updateConnectionDiagnostics(){const diagnosticsEl=document.getElementById('connectionDiagnostics');let diagnostics=[];if(this.state.isConnected){diagnostics.push({status:'success',message:`✔ Connected to Ollama (${this.state.models.length} models available)`})}else{diagnostics.push({status:'error',message:'✗ Cannot connect to Ollama server'});if(this.state.connectionError==='CORS_ERROR'){diagnostics.push({status:'warning',message:'⚠ CORS not enabled - Start Ollama with: set OLLAMA_ORIGINS=* && ollama serve'})}}const url=this.state.settings.ollamaUrl;if(!url.startsWith('http://')&&!url.startsWith('https://')){diagnostics.push({status:'error',message:'✗ Invalid URL format - Must start with http:// or https://'})}else{diagnostics.push({status:'success',message:'✔ URL format is valid'})}if(url.includes(':11434')){diagnostics.push({status:'success',message:'✔ Using default Ollama port (11434)'})}diagnosticsEl.innerHTML=diagnostics.map(item=>`<div class="diagnostic-item"><div class="diagnostic-status ${item.status}"></div><span>${item.message}</span></div>`).join('')}
+         class OllamaChatApp {
+            constructor() {
+               this.db = null;
+               this.streamingUpdateThrottle = false;
+               this.currentStream = null;
+               this.state = {
+                  currentChatId: null,
+                  chats: {},
+                  models: [],
+                  selectedModel: '',
+                  settings: {
+                     ollamaUrl: 'http://localhost:11434',
+                     temperature: 0.7,
+                     topP: 0.9
+                  },
+                  isConnected: false,
+                  connectionError: null,
+                  isStreaming: false
+               };
+               this.DB_NAME = 'OllamaChatDB';
+               this.DB_VERSION = 1;
+            }
+            showNotification(type, title, message) {
+               return new Promise((resolve) => {
+                  const modal = document.getElementById('notificationModal');
+                  const icon = document.getElementById('notificationIcon');
+                  const titleEl = document.getElementById('notificationTitle');
+                  const messageEl = document.getElementById('notificationMessage');
+                  const okBtn = document.getElementById('notificationOkBtn');
+
+                  icon.className = `notification-icon ${type}`;
+                  switch (type) {
+                     case 'success':
+                        icon.textContent = '✔';
+                        break;
+                     case 'error':
+                        icon.textContent = '✕';
+                        break;
+                     case 'warning':
+                        icon.textContent = '⚠';
+                        break;
+                     default:
+                        icon.textContent = 'ℹ';
+                  }
+
+                  titleEl.textContent = title;
+                  messageEl.textContent = message;
+                  modal.classList.add('show');
+
+                  const handleClose = () => {
+                     modal.classList.remove('show');
+                     okBtn.removeEventListener('click', handleClose);
+                     resolve();
+                  };
+                  okBtn.addEventListener('click', handleClose);
+               });
+            }
+            showConfirmation(title, message) {
+               return new Promise((resolve) => {
+                  const modal = document.getElementById('confirmationModal');
+                  const titleEl = document.getElementById('confirmationTitle');
+                  const messageEl = document.getElementById('confirmationMessage');
+                  const cancelBtn = document.getElementById('confirmationCancelBtn');
+                  const confirmBtn = document.getElementById('confirmationConfirmBtn');
+
+                  titleEl.textContent = title;
+                  messageEl.textContent = message;
+                  modal.classList.add('show');
+
+                  const handleCancel = () => {
+                     modal.classList.remove('show');
+                     cancelBtn.removeEventListener('click', handleCancel);
+                     confirmBtn.removeEventListener('click', handleConfirm);
+                     resolve(false);
+                  };
+
+                  const handleConfirm = () => {
+                     modal.classList.remove('show');
+                     cancelBtn.removeEventListener('click', handleCancel);
+                     confirmBtn.removeEventListener('click', handleConfirm);
+                     resolve(true);
+                  };
+
+                  cancelBtn.addEventListener('click', handleCancel);
+                  confirmBtn.addEventListener('click', handleConfirm);
+               });
+            }
+            async initDB() {
+               return new Promise((resolve, reject) => {
+                  const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+
+                  request.onerror = () => reject(new Error('Failed to open database'));
+
+                  request.onsuccess = () => {
+                     this.db = request.result;
+                     resolve(this.db);
+                  };
+
+                  request.onupgradeneeded = (event) => {
+                     this.db = event.target.result;
+
+                     if (!this.db.objectStoreNames.contains('chats')) {
+                        const chatStore = this.db.createObjectStore('chats', { keyPath: 'id' });
+                        chatStore.createIndex('createdAt', 'createdAt', { unique: false });
+                     }
+
+                     if (!this.db.objectStoreNames.contains('settings')) {
+                        this.db.createObjectStore('settings', { keyPath: 'key' });
+                     }
+
+                     if (!this.db.objectStoreNames.contains('appState')) {
+                        this.db.createObjectStore('appState', { keyPath: 'key' });
+                     }
+                  };
+               });
+            }
+            async saveChat(chat) {
+               if (!this.db) return;
+
+               try {
+                  const transaction = this.db.transaction(['chats'], 'readwrite');
+                  const store = transaction.objectStore('chats');
+                  await this.promisifyRequest(store.put(chat));
+                  this.state.chats[chat.id] = chat;
+                  this.showSaving();
+               } catch (error) {
+                  console.error('Error saving chat:', error);
+               }
+            }
+            async loadChats() {
+               if (!this.db) return;
+
+               try {
+                  const transaction = this.db.transaction(['chats'], 'readonly');
+                  const store = transaction.objectStore('chats');
+                  const chats = await this.promisifyRequest(store.getAll());
+
+                  this.state.chats = {};
+                  chats.forEach((chat) => {
+                     this.state.chats[chat.id] = chat;
+                  });
+               } catch (error) {
+                  console.error('Error loading chats:', error);
+               }
+            }
+            async deleteChat(chatId) {
+               if (!this.db) return;
+
+               try {
+                  const transaction = this.db.transaction(['chats'], 'readwrite');
+                  const store = transaction.objectStore('chats');
+                  await this.promisifyRequest(store.delete(chatId));
+                  delete this.state.chats[chatId];
+               } catch (error) {
+                  console.error('Error deleting chat:', error);
+               }
+            }
+            async saveSettings(settings) {
+               if (!this.db) return;
+
+               try {
+                  const transaction = this.db.transaction(['settings'], 'readwrite');
+                  const store = transaction.objectStore('settings');
+                  await this.promisifyRequest(store.put({ key: 'main', ...settings }));
+                  this.state.settings = settings;
+               } catch (error) {
+                  console.error('Error saving settings:', error);
+               }
+            }
+            async loadSettings() {
+               if (!this.db) return;
+
+               try {
+                  const transaction = this.db.transaction(['settings'], 'readonly');
+                  const store = transaction.objectStore('settings');
+                  const result = await this.promisifyRequest(store.get('main'));
+
+                  if (result) {
+                     const { key, ...settings } = result;
+                     this.state.settings = { ...this.state.settings, ...settings };
+                  }
+               } catch (error) {
+                  console.error('Error loading settings:', error);
+               }
+            }
+            async saveAppState(key, value) {
+               if (!this.db) return;
+
+               try {
+                  const transaction = this.db.transaction(['appState'], 'readwrite');
+                  const store = transaction.objectStore('appState');
+                  await this.promisifyRequest(store.put({ key, value }));
+               } catch (error) {
+                  console.error('Error saving app state:', error);
+               }
+            }
+            async loadAppState(key) {
+               if (!this.db) return null;
+
+               try {
+                  const transaction = this.db.transaction(['appState'], 'readonly');
+                  const store = transaction.objectStore('appState');
+                  const result = await this.promisifyRequest(store.get(key));
+                  return result ? result.value : null;
+               } catch (error) {
+                  console.error('Error loading app state:', error);
+                  return null;
+               }
+            }
+            promisifyRequest(request) {
+               return new Promise((resolve, reject) => {
+                  request.onsuccess = () => resolve(request.result);
+                  request.onerror = () => reject(request.error);
+               });
+            }
+            showLoading(message = 'Loading...') {
+               const overlay = document.getElementById('loadingOverlay');
+               const text = document.getElementById('loadingText');
+               text.textContent = message;
+               overlay.style.display = 'flex';
+            }
+            hideLoading() {
+               document.getElementById('loadingOverlay').style.display = 'none';
+            }
+            showSaving() {
+               const statusIndicator = document.getElementById('statusIndicator');
+               const statusText = document.getElementById('statusText');
+               const originalClass = statusIndicator.className;
+               const originalText = statusText.textContent;
+
+               statusIndicator.className = 'status-indicator saving';
+               statusText.textContent = 'Saving...';
+
+               setTimeout(() => {
+                  statusIndicator.className = originalClass;
+                  statusText.textContent = originalText;
+               }, 1000);
+            }
+            updateConnectionStatus() {
+               const statusIndicator = document.getElementById('statusIndicator');
+               const statusText = document.getElementById('statusText');
+
+               if (this.state.isConnected) {
+                  statusIndicator.className = 'status-indicator connected';
+                  statusText.textContent = `Connected (${this.state.models.length} models)`;
+               } else {
+                  statusIndicator.className = 'status-indicator disconnected';
+                  if (this.state.connectionError) {
+                     switch (this.state.connectionError) {
+                        case 'CORS_ERROR':
+                           statusText.textContent = 'CORS Error - Check setup';
+                           statusText.title = 'Click Settings for troubleshooting';
+                           break;
+                        case 'NETWORK_ERROR':
+                           statusText.textContent = 'Network Error';
+                           break;
+                        case 'NOT_FOUND':
+                           statusText.textContent = 'Ollama not found';
+                           break;
+                        case 'SERVER_ERROR':
+                           statusText.textContent = 'Server Error';
+                           break;
+                        default:
+                           statusText.textContent = 'Connection Failed';
+                     }
+                  } else {
+                     statusText.textContent = 'Disconnected';
+                  }
+               }
+            }
+            async loadModels() {
+               try {
+                  console.log(`Attempting to connect to Ollama at: ${this.state.settings.ollamaUrl}`);
+                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/tags`, {
+                     method: 'GET',
+                     headers: { 'Content-Type': 'application/json' }
+                  });
+
+                  if (response.ok) {
+                     const data = await response.json();
+                     this.state.models = data.models || [];
+                     this.state.isConnected = true;
+                     this.state.connectionError = null;
+                     this.updateModelSelect();
+                     this.updateConnectionStatus();
+                     this.updateModelList();
+                     console.log(`Successfully loaded ${this.state.models.length} models`);
+                  } else {
+                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                  }
+               } catch (error) {
+                  console.error('Error loading models:', error);
+                  this.state.isConnected = false;
+                  this.state.connectionError = this.getConnectionErrorMessage(error);
+                  this.updateConnectionStatus();
+               }
+            }
+            getConnectionErrorMessage(error) {
+               if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                  return 'CORS_ERROR';
+               } else if (error.message.includes('NetworkError')) {
+                  return 'NETWORK_ERROR';
+               } else if (error.message.includes('404')) {
+                  return 'NOT_FOUND';
+               } else if (error.message.includes('500')) {
+                  return 'SERVER_ERROR';
+               } else {
+                  return 'UNKNOWN_ERROR';
+               }
+            }
+            updateModelSelect() {
+               const modelSelect = document.getElementById('modelSelect');
+               modelSelect.innerHTML = '<option value="">Select Model...</option>';
+
+               this.state.models.forEach((model) => {
+                  const option = document.createElement('option');
+                  option.value = model.name;
+                  option.textContent = model.name;
+                  if (model.name === this.state.selectedModel) {
+                     option.selected = true;
+                  }
+                  modelSelect.appendChild(option);
+               });
+            }
+            updateModelList() {
+               const modelList = document.getElementById('modelList');
+               modelList.innerHTML = '';
+
+               this.state.models.forEach((model) => {
+                  const modelItem = document.createElement('div');
+                  modelItem.className = 'model-item';
+                  const sizeText = model.size ? this.formatBytes(model.size) : 'Size unknown';
+                  modelItem.innerHTML = `
+                     <div class="model-info">
+                        <div class="model-name">${this.escapeHtml(model.name)}</div>
+                        <div class="model-size">${sizeText} • Modified: ${new Date(model.modified_at).toLocaleDateString()}</div>
+                     </div>
+                     <div class="model-actions">
+                        <button class="model-btn danger" onclick="app.deleteModel('${model.name}')">Remove</button>
+                     </div>
+                  `;
+                  modelList.appendChild(modelItem);
+               });
+
+               if (this.state.models.length === 0) {
+                  modelList.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:20px">No models installed. Use the input above to pull a model.</div>';
+               }
+            }
+            async pullModel(modelName) {
+               if (!modelName.trim()) {
+                  await this.showNotification('warning', 'Invalid Input', 'Please enter a model name');
+                  return;
+               }
+
+               const addBtn = document.getElementById('addModelBtn');
+               const addInput = document.getElementById('addModelInput');
+               const terminal = document.getElementById('terminal');
+               const terminalOutput = document.getElementById('terminalOutput');
+
+               addBtn.disabled = true;
+               addBtn.textContent = 'Pulling...';
+               addInput.disabled = true;
+               terminal.classList.add('visible');
+               terminalOutput.innerHTML = '';
+
+               this.addTerminalLine('Starting model pull process...', 'info');
+               this.addTerminalLine(`Pulling model: ${modelName}`, 'info');
+
+               try {
+                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/pull`, {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ name: modelName, stream: true })
+                  });
+
+                  if (!response.ok) {
+                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                  }
+
+                  const reader = response.body.getReader();
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+
+                  while (true) {
+                     const { done, value } = await reader.read();
+                     if (done) break;
+
+                     buffer += decoder.decode(value, { stream: true });
+                     const lines = buffer.split('\n');
+                     buffer = lines.pop() || '';
+
+                     for (const line of lines) {
+                        if (line.trim()) {
+                           try {
+                              const data = JSON.parse(line);
+                              if (data.status) {
+                                 let statusText = data.status;
+                                 if (data.completed && data.total) {
+                                    const percent = Math.round((data.completed / data.total) * 100);
+                                    statusText += ` (${percent}%)`;
+                                 }
+                                 this.addTerminalLine(statusText, 'info');
+                              }
+                              if (data.error) {
+                                 this.addTerminalLine(`Error: ${data.error}`, 'error');
+                              }
+                           } catch (parseError) {
+                              console.warn('Failed to parse pull response:', line);
+                           }
+                        }
+                     }
+                  }
+
+                  this.addTerminalLine(`Successfully pulled model: ${modelName}`, 'success');
+                  addInput.value = '';
+                  await this.loadModels();
+                  await this.showNotification('success', 'Model Downloaded', `Successfully pulled model: ${modelName}`);
+               } catch (error) {
+                  console.error('Error pulling model:', error);
+                  this.addTerminalLine(`Failed to pull model: ${error.message}`, 'error');
+                  await this.showNotification('error', 'Download Failed', `Failed to pull model: ${error.message}`);
+               }
+
+               addBtn.disabled = false;
+               addBtn.textContent = 'Pull Model';
+               addInput.disabled = false;
+            }
+            async deleteModel(modelName) {
+               const confirmed = await this.showConfirmation(
+                  'Remove Model',
+                  `Are you sure you want to remove the model "${modelName}"? This action cannot be undone.`
+               );
+               if (!confirmed) return;
+
+               const terminal = document.getElementById('terminal');
+               const terminalOutput = document.getElementById('terminalOutput');
+
+               terminal.classList.add('visible');
+               terminalOutput.innerHTML = '';
+
+               this.addTerminalLine('Starting model deletion process...', 'info');
+               this.addTerminalLine(`Removing model: ${modelName}`, 'info');
+
+               try {
+                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/delete`, {
+                     method: 'DELETE',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ name: modelName })
+                  });
+
+                  if (response.ok) {
+                     this.addTerminalLine(`Successfully removed model: ${modelName}`, 'success');
+                     if (this.state.selectedModel === modelName) {
+                        this.state.selectedModel = '';
+                        await this.saveAppState('selectedModel', '');
+                     }
+                     await this.loadModels();
+                     await this.showNotification('success', 'Model Removed', `Successfully removed model: ${modelName}`);
+                  } else {
+                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                  }
+               } catch (error) {
+                  console.error('Error deleting model:', error);
+                  this.addTerminalLine(`Failed to remove model: ${error.message}`, 'error');
+                  await this.showNotification('error', 'Removal Failed', `Failed to remove model: ${error.message}`);
+               }
+            }
+            addTerminalLine(text, type = 'info') {
+               const terminalOutput = document.getElementById('terminalOutput');
+               const timestamp = new Date().toLocaleTimeString();
+               const fullText = `[${timestamp}] ${text}`;
+
+               const lines = terminalOutput.querySelectorAll('.terminal-line');
+               const lastLine = lines[lines.length - 1];
+
+               if (lastLine && this.shouldUpdateLastLine(lastLine.textContent, fullText)) {
+                  lastLine.className = `terminal-line ${type}`;
+                  lastLine.textContent = fullText;
+               } else {
+                  const line = document.createElement('div');
+                  line.className = `terminal-line ${type}`;
+                  line.textContent = fullText;
+                  terminalOutput.appendChild(line);
+               }
+
+               terminalOutput.scrollTop = terminalOutput.scrollHeight;
+            }
+            shouldUpdateLastLine(lastLineText, newLineText) {
+               const extractMessage = (line) => {
+                  const match = line.match(/\[\d+:\d+:\d+\s*[AP]M\]\s*(.+)/);
+                  return match ? match[1] : line;
+               };
+
+               const lastMessage = extractMessage(lastLineText);
+               const newMessage = extractMessage(newLineText);
+
+               if (lastMessage && newMessage) {
+                  const normalizeMessage = (msg) => msg.replace(/\s*\(\d+%\).*$/, '').trim();
+                  const lastNormalized = normalizeMessage(lastMessage);
+                  const newNormalized = normalizeMessage(newMessage);
+
+                  if (lastNormalized === newNormalized && lastNormalized.length > 0) {
+                     return true;
+                  }
+
+                  const progressPatterns = [
+                     /^pulling\s+[a-f0-9]+/,
+                     /^verifying\s+sha256/,
+                     /^writing\s+manifest/,
+                     /^removing\s+/
+                  ];
+
+                  for (const pattern of progressPatterns) {
+                     if (pattern.test(lastNormalized) && pattern.test(newNormalized)) {
+                        return true;
+                     }
+                  }
+               }
+
+               return false;
+            }
+            formatBytes(bytes, decimals = 2) {
+               if (bytes === 0) return '0 Bytes';
+
+               const k = 1024;
+               const dm = decimals < 0 ? 0 : decimals;
+               const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+               const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+               return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+            }
+            async createNewChat() {
+               const chatId = 'chat_' + Date.now();
+               const chat = {
+                  id: chatId,
+                  title: 'New Chat',
+                  messages: [],
+                  model: this.state.selectedModel,
+                  createdAt: new Date()
+               };
+
+               await this.saveChat(chat);
+               this.state.currentChatId = chatId;
+               await this.saveAppState('currentChatId', chatId);
+               this.updateUI();
+            }
+            async selectChat(chatId) {
+               this.state.currentChatId = chatId;
+               await this.saveAppState('currentChatId', chatId);
+               this.updateUI();
+            }
+            async deleteChatHandler(chatId) {
+               const confirmed = await this.showConfirmation(
+                  'Delete Chat',
+                  'Are you sure you want to delete this chat? This action cannot be undone.'
+               );
+
+               if (confirmed) {
+                  await this.deleteChat(chatId);
+                  if (this.state.currentChatId === chatId) {
+                     this.state.currentChatId = null;
+                     await this.saveAppState('currentChatId', null);
+                  }
+                  this.updateUI();
+               }
+            }
+            async clearChat() {
+               if (this.state.currentChatId) {
+                  const confirmed = await this.showConfirmation(
+                     'Clear Chat',
+                     'Are you sure you want to clear all messages in this chat?'
+                  );
+
+                  if (confirmed) {
+                     const currentChat = this.state.chats[this.state.currentChatId];
+                     currentChat.messages = [];
+                     await this.saveChat(currentChat);
+                     this.updateUI();
+                  }
+               }
+            }
+            async copyToClipboard(text) {
+               try {
+                  await navigator.clipboard.writeText(text);
+                  return true;
+               } catch (err) {
+                  const textArea = document.createElement("textarea");
+                  textArea.value = text;
+                  textArea.style.position = "fixed";
+                  textArea.style.left = "-999999px";
+                  document.body.appendChild(textArea);
+                  textArea.focus();
+                  textArea.select();
+
+                  try {
+                     document.execCommand('copy');
+                     document.body.removeChild(textArea);
+                     return true;
+                  } catch (err) {
+                     document.body.removeChild(textArea);
+                     return false;
+                  }
+               }
+            }
+            stripFormatting(content) {
+               return content
+                  .replace(/<[^>]*>/g, '')
+                  .replace(/&lt;/g, '<')
+                  .replace(/&gt;/g, '>')
+                  .replace(/&amp;/g, '&')
+                  .replace(/&quot;/g, '"')
+                  .replace(/&#39;/g, "'");
+            }
+            async stopStreaming() {
+               if (this.currentStream) {
+                  this.currentStream.abort();
+                  this.currentStream = null;
+                  this.state.isStreaming = false;
+                  this.updateSendButton();
+               }
+            }
+            async sendMessage() {
+               const messageInput = document.getElementById('messageInput');
+               const message = messageInput.value.trim();
+
+               if (!message || !this.state.selectedModel) {
+                  if (!this.state.selectedModel) {
+                     await this.showNotification('warning', 'No Model Selected', 'Please select a model first');
+                  }
+                  return;
+               }
+
+               if (!this.state.currentChatId) {
+                  await this.createNewChat();
+               }
+
+               const currentChat = this.state.chats[this.state.currentChatId];
+               const userMessage = {
+                  id: 'msg_' + Date.now(),
+                  role: 'user',
+                  content: message,
+                  timestamp: new Date()
+               };
+               currentChat.messages.push(userMessage);
+
+               if (currentChat.messages.length === 1) {
+                  currentChat.title = message.length > 30 ? message.substring(0, 30) + '...' : message;
+               }
+
+               await this.saveChat(currentChat);
+               messageInput.value = '';
+               this.autoResize(messageInput);
+               this.updateUI();
+
+               this.state.isStreaming = true;
+               this.updateSendButton();
+
+               const assistantMessage = {
+                  id: 'msg_' + Date.now(),
+                  role: 'assistant',
+                  content: '',
+                  timestamp: new Date(),
+                  isStreaming: true
+               };
+               currentChat.messages.push(assistantMessage);
+               this.updateUI();
+
+               try {
+                  this.currentStream = new AbortController();
+                  const response = await fetch(`${this.state.settings.ollamaUrl}/api/generate`, {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({
+                        model: this.state.selectedModel,
+                        prompt: this.buildPrompt(currentChat.messages.slice(0, -1)),
+                        stream: true,
+                        options: {
+                           temperature: this.state.settings.temperature,
+                           top_p: this.state.settings.topP
+                        }
+                     }),
+                     signal: this.currentStream.signal
+                  });
+
+                  if (!response.ok) {
+                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                  }
+
+                  const reader = response.body.getReader();
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+
+                  while (true) {
+                     const { done, value } = await reader.read();
+                     if (done) break;
+
+                     const chunk = decoder.decode(value, { stream: true });
+                     buffer += chunk;
+                     const lines = buffer.split('\n');
+                     buffer = lines.pop() || '';
+
+                     for (const line of lines) {
+                        const trimmedLine = line.trim();
+                        if (trimmedLine) {
+                           try {
+                              const data = JSON.parse(trimmedLine);
+                              if (data.response) {
+                                 assistantMessage.content += data.response;
+                                 this.updateStreamingMessage(assistantMessage);
+                              }
+                              if (data.done) {
+                                 assistantMessage.isStreaming = false;
+                                 this.state.isStreaming = false;
+                                 this.updateSendButton();
+                                 await this.saveChat(currentChat);
+                                 this.updateUI();
+                                 return;
+                              }
+                           } catch (parseError) {
+                              console.warn('Failed to parse streaming response line:', trimmedLine);
+                           }
+                        }
+                     }
+                  }
+
+                  if (buffer.trim()) {
+                     try {
+                        const data = JSON.parse(buffer.trim());
+                        if (data.response) {
+                           assistantMessage.content += data.response;
+                           this.updateStreamingMessage(assistantMessage);
+                        }
+                     } catch (parseError) {
+                        console.warn('Failed to parse final buffer:', buffer);
+                     }
+                  }
+
+                  assistantMessage.isStreaming = false;
+                  this.state.isStreaming = false;
+                  this.updateSendButton();
+                  await this.saveChat(currentChat);
+                  this.updateUI();
+               } catch (error) {
+                  if (error.name === 'AbortError') {
+                     assistantMessage.content += ' [Response stopped by user]';
+                     assistantMessage.isStreaming = false;
+                     await this.saveChat(currentChat);
+                     this.updateUI();
+                  } else {
+                     console.error('Error sending message:', error);
+                     currentChat.messages.pop();
+                     const errorMessage = {
+                        id: 'msg_' + Date.now(),
+                        role: 'assistant',
+                        content: 'Sorry, I encountered an error while processing your request. Please check your connection to Ollama.',
+                        timestamp: new Date()
+                     };
+                     currentChat.messages.push(errorMessage);
+                     await this.saveChat(currentChat);
+                     this.updateUI();
+                     await this.showNotification('error', 'Message Error', 'Failed to send message. Please check your connection to Ollama.');
+                  }
+                  this.state.isStreaming = false;
+                  this.updateSendButton();
+               }
+            }
+            updateStreamingMessage(message) {
+               if (!this.streamingUpdateThrottle) {
+                  this.streamingUpdateThrottle = true;
+                  requestAnimationFrame(() => {
+                     const messageElements = document.querySelectorAll('.message.assistant');
+                     const lastMessageEl = messageElements[messageElements.length - 1];
+
+                     if (lastMessageEl) {
+                        const contentEl = lastMessageEl.querySelector('.message-text');
+                        if (contentEl) {
+                           let formattedContent = this.formatMessage(message.content);
+                           if (message.isStreaming) {
+                              formattedContent += '<span class="streaming-cursor">|</span>';
+                           }
+                           contentEl.innerHTML = formattedContent;
+                           this.scrollToBottom();
+                        }
+                     }
+                     this.streamingUpdateThrottle = false;
+                  });
+               }
+            }
+            buildPrompt(messages) {
+               const validMessages = messages.filter((msg) => !msg.isStreaming);
+               return validMessages
+                  .map((msg) => {
+                     const role = msg.role === 'user' ? 'Human' : 'Assistant';
+                     return `${role}: ${msg.content}`;
+                  })
+                  .join('\n\n') + '\n\nAssistant:';
+            }
+            updateUI() {
+               this.updateChatList();
+               this.updateMessages();
+               this.updateChatTitle();
+               this.updateSendButton();
+            }
+            updateChatList() {
+               const chatList = document.getElementById('chatList');
+               chatList.innerHTML = '';
+
+               Object.values(this.state.chats)
+                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                  .forEach((chat) => {
+                     const chatItem = document.createElement('div');
+                     chatItem.className = `chat-item ${chat.id === this.state.currentChatId ? 'active' : ''}`;
+
+                     const lastMessage = chat.messages.length > 0 ? chat.messages[chat.messages.length - 1] : null;
+                     const preview = lastMessage
+                        ? (lastMessage.content.length > 50
+                              ? lastMessage.content.substring(0, 50) + '...'
+                              : lastMessage.content)
+                        : 'No messages yet';
+
+                     chatItem.innerHTML = `
+                        <div class="chat-content">
+                           <div class="chat-title">${this.escapeHtml(chat.title)}</div>
+                           <div class="chat-preview">${this.escapeHtml(preview)}</div>
+                        </div>
+                        <button class="chat-delete" title="Delete chat">×</button>
+                     `;
+
+                     chatItem.querySelector('.chat-content').addEventListener('click', () => {
+                        this.selectChat(chat.id);
+                     });
+
+                     chatItem.querySelector('.chat-delete').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.deleteChatHandler(chat.id);
+                     });
+
+                     chatList.appendChild(chatItem);
+                  });
+            }
+            updateMessages() {
+               const container = document.getElementById('messagesContainer');
+
+               if (!this.state.currentChatId) {
+                  container.innerHTML = `
+                     <div class="message assistant">
+                        <div class="message-avatar">AI</div>
+                        <div class="message-content">
+                           <div class="message-text">Hello! I'm your AI assistant. Please select a model from the sidebar to start chatting.</div>
+                           <div class="message-time">Just now</div>
+                        </div>
+                     </div>
+                  `;
+                  return;
+               }
+
+               const currentChat = this.state.chats[this.state.currentChatId];
+               container.innerHTML = '';
+
+               currentChat.messages.forEach((message) => {
+                  const messageEl = document.createElement('div');
+                  messageEl.className = `message ${message.role}`;
+
+                  const avatar = message.role === 'user' ? 'You' : 'AI';
+                  const formattedContent = this.formatMessage(message.content);
+                  const timeStr = this.formatTime(message.timestamp);
+
+                  let messageContent = formattedContent;
+                  if (message.isStreaming) {
+                     messageContent += '<span class="streaming-cursor">|</span>';
+                  }
+
+                  messageEl.innerHTML = `
+                     <div class="message-avatar">${avatar}</div>
+                     <div class="message-content">
+                        <button class="copy-btn" title="Copy message">📋</button>
+                        <div class="message-text">${messageContent}</div>
+                        <div class="message-time">${timeStr}</div>
+                     </div>
+                  `;
+
+                  const copyBtn = messageEl.querySelector('.copy-btn');
+                  copyBtn.addEventListener('click', async () => {
+                     const plainText = this.stripFormatting(message.content);
+                     const success = await this.copyToClipboard(plainText);
+                     if (success) {
+                        copyBtn.textContent = '✓';
+                        setTimeout(() => {
+                           copyBtn.textContent = '📋';
+                        }, 2000);
+                     }
+                  });
+
+                  container.appendChild(messageEl);
+               });
+
+               this.scrollToBottom();
+            }
+            updateChatTitle() {
+               const titleEl = document.getElementById('chatTitle');
+
+               if (this.state.currentChatId) {
+                  const currentChat = this.state.chats[this.state.currentChatId];
+                  titleEl.textContent = currentChat.title;
+               } else {
+                  titleEl.textContent = 'Welcome to xsukax Ollama WebUI Chat';
+               }
+            }
+            updateSendButton() {
+               const sendBtn = document.getElementById('sendBtn');
+
+               if (this.state.isStreaming) {
+                  sendBtn.className = 'stop-btn';
+                  sendBtn.innerHTML = '■';
+                  sendBtn.disabled = false;
+               } else {
+                  sendBtn.className = 'send-btn';
+                  sendBtn.innerHTML = '➤';
+                  sendBtn.disabled = !this.state.selectedModel || !this.state.isConnected;
+               }
+            }
+            escapeHtml(text) {
+               const div = document.createElement('div');
+               div.textContent = text;
+               return div.innerHTML;
+            }
+            formatMessage(content) {
+               if (!content) return '';
+
+               content = this.escapeHtml(content);
+               content = content.replace(/```([\s\S]*?)```/g, '<div class="code-block">$1</div>');
+               content = content.replace(/`([^`]+)`/g, '<span class="inline-code">$1</span>');
+               content = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+               content = content.replace(/\*(.*?)\*/g, '<em>$1</em>');
+               content = content.replace(/\n/g, '<br>');
+
+               return content;
+            }
+            formatTime(timestamp) {
+               const now = new Date();
+               const diff = now - new Date(timestamp);
+
+               if (diff < 60000) {
+                  return 'Just now';
+               } else if (diff < 3600000) {
+                  return Math.floor(diff / 60000) + 'm ago';
+               } else if (diff < 86400000) {
+                  return Math.floor(diff / 3600000) + 'h ago';
+               } else {
+                  return new Date(timestamp).toLocaleDateString();
+               }
+            }
+            autoResize(textarea) {
+               textarea.style.height = 'auto';
+               textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+            }
+            scrollToBottom() {
+               const container = document.getElementById('messagesContainer');
+               container.scrollTop = container.scrollHeight;
+            }
+            showSettings() {
+               const modal = document.getElementById('settingsModal');
+
+               document.getElementById('ollamaUrl').value = this.state.settings.ollamaUrl;
+               document.getElementById('temperature').value = this.state.settings.temperature;
+               document.getElementById('topP').value = this.state.settings.topP;
+
+               this.updateConnectionDiagnostics();
+               this.updateModelList();
+               modal.classList.add('show');
+            }
+            hideSettings() {
+               document.getElementById('settingsModal').classList.remove('show');
+               document.getElementById('terminal').classList.remove('visible');
+            }
+            updateConnectionDiagnostics() {
+               const diagnosticsEl = document.getElementById('connectionDiagnostics');
+               let diagnostics = [];
+
+               if (this.state.isConnected) {
+                  diagnostics.push({
+                     status: 'success',
+                     message: `✔ Connected to Ollama (${this.state.models.length} models available)`
+                  });
+               } else {
+                  diagnostics.push({
+                     status: 'error',
+                     message: '✗ Cannot connect to Ollama server'
+                  });
+                  if (this.state.connectionError === 'CORS_ERROR') {
+                     diagnostics.push({
+                        status: 'warning',
+                        message: '⚠ CORS not enabled - Start Ollama with: set OLLAMA_ORIGINS=* && ollama serve'
+                     });
+                  }
+               }
+
+               const url = this.state.settings.ollamaUrl;
+               if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                  diagnostics.push({
+                     status: 'error',
+                     message: '✗ Invalid URL format - Must start with http:// or https://'
+                  });
+               } else {
+                  diagnostics.push({
+                     status: 'success',
+                     message: '✔ URL format is valid'
+                  });
+               }
+
+               if (url.includes(':11434')) {
+                  diagnostics.push({
+                     status: 'success',
+                     message: '✔ Using default Ollama port (11434)'
+                  });
+               }
+
+               diagnosticsEl.innerHTML = diagnostics
+                  .map(
+                     (item) => `
+                        <div class="diagnostic-item">
+                           <div class="diagnostic-status ${item.status}"></div>
+                           <span>${item.message}</span>
+                        </div>
+                     `
+                  )
+                  .join('');
+            }
          async testConnection(){const testBtn=document.getElementById('testConnectionBtn');const originalText=testBtn.textContent;testBtn.textContent='Testing...';testBtn.disabled=true;try{const testUrl=document.getElementById('ollamaUrl').value;const response=await fetch(`${testUrl}/api/tags`,{method:'GET',headers:{'Content-Type':'application/json'}});if(response.ok){const data=await response.json();const modelList=data.models?.map(m=>m.name).join('\n')||'No models available';await this.showNotification('success','Connection Successful',`Found ${data.models?.length||0} models:\n\n${modelList}`)}else{await this.showNotification('error','Connection Failed',`HTTP ${response.status}: ${response.statusText}`)}}catch(error){let errorMessage='';if(error.name==='TypeError'&&error.message.includes('fetch')){errorMessage='CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Windows):\n1. Stop Ollama\n2. Start with: set OLLAMA_ORIGINS=* && ollama serve\n3. Or set environment: setx OLLAMA_ORIGINS "*"'}else{errorMessage=`Error: ${error.message}`}await this.showNotification('error','Connection Failed',errorMessage)}testBtn.textContent=originalText;testBtn.disabled=false;this.updateConnectionDiagnostics()}
-         async saveSettingsFromModal(){const ollamaUrl=document.getElementById('ollamaUrl').value;const temperature=parseFloat(document.getElementById('temperature').value);const topP=parseFloat(document.getElementById('topP').value);const newSettings={ollamaUrl,temperature,topP};await this.saveSettings(newSettings);this.hideSettings();await this.loadModels();await this.showNotification('success','Settings Saved','Your settings have been saved successfully')}
-         setupEventListeners(){const messageInput=document.getElementById('messageInput');const modelSelect=document.getElementById('modelSelect');const sendBtn=document.getElementById('sendBtn');const newChatBtn=document.getElementById('newChatBtn');const clearChatBtn=document.getElementById('clearChatBtn');const settingsBtn=document.getElementById('settingsBtn');const settingsModal=document.getElementById('settingsModal');const cancelSettingsBtn=document.getElementById('cancelSettingsBtn');const saveSettingsBtn=document.getElementById('saveSettingsBtn');const testConnectionBtn=document.getElementById('testConnectionBtn');const addModelBtn=document.getElementById('addModelBtn');const addModelInput=document.getElementById('addModelInput');const terminalClose=document.getElementById('terminalClose');const sidebarToggle=document.getElementById('sidebarToggle');const sidebar=document.getElementById('sidebar');messageInput.addEventListener('keydown',(e)=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(this.state.isStreaming){this.stopStreaming()}else{this.sendMessage()}}});messageInput.addEventListener('input',()=>{this.autoResize(messageInput)});modelSelect.addEventListener('change',async(e)=>{this.state.selectedModel=e.target.value;await this.saveAppState('selectedModel',e.target.value);this.updateUI()});sendBtn.addEventListener('click',()=>{if(this.state.isStreaming){this.stopStreaming()}else{this.sendMessage()}});newChatBtn.addEventListener('click',()=>{this.createNewChat()});clearChatBtn.addEventListener('click',()=>{this.clearChat()});settingsBtn.addEventListener('click',()=>{this.showSettings()});cancelSettingsBtn.addEventListener('click',()=>{this.hideSettings()});saveSettingsBtn.addEventListener('click',()=>{this.saveSettingsFromModal()});testConnectionBtn.addEventListener('click',()=>{this.testConnection()});addModelBtn.addEventListener('click',()=>{const modelName=addModelInput.value.trim();this.pullModel(modelName)});addModelInput.addEventListener('keydown',(e)=>{if(e.key==='Enter'){e.preventDefault();const modelName=addModelInput.value.trim();this.pullModel(modelName)}});terminalClose.addEventListener('click',()=>{document.getElementById('terminal').classList.remove('visible')});settingsModal.addEventListener('click',(e)=>{if(e.target===settingsModal){this.hideSettings()}});sidebarToggle.addEventListener('click',()=>{sidebar.classList.toggle('open')});document.addEventListener('click',(e)=>{if(window.innerWidth<=768&&!sidebar.contains(e.target)&&!sidebarToggle.contains(e.target)){sidebar.classList.remove('open')}})}
-         async init(){try{this.showLoading('Initializing application...');this.showLoading('Setting up database...');await this.initDB();this.showLoading('Loading settings...');await this.loadSettings();this.showLoading('Loading your chats...');await this.loadChats();this.showLoading('Restoring session...');const lastModel=await this.loadAppState('selectedModel');const lastChatId=await this.loadAppState('currentChatId');if(lastModel)this.state.selectedModel=lastModel;if(lastChatId&&this.state.chats[lastChatId]){this.state.currentChatId=lastChatId}this.showLoading('Connecting to Ollama...');await this.loadModels();this.setupEventListeners();this.updateUI();this.hideLoading()}catch(error){console.error('Failed to initialize app:',error);this.hideLoading();await this.showNotification('error','Initialization Failed','Failed to initialize application. Some features may not work properly.');await this.loadModels();this.setupEventListeners();this.updateUI()}}}
+            async saveSettingsFromModal() {
+               const ollamaUrl = document.getElementById('ollamaUrl').value;
+               const temperature = parseFloat(document.getElementById('temperature').value);
+               const topP = parseFloat(document.getElementById('topP').value);
+
+               const newSettings = { ollamaUrl, temperature, topP };
+               await this.saveSettings(newSettings);
+               this.hideSettings();
+               await this.loadModels();
+               await this.showNotification('success', 'Settings Saved', 'Your settings have been saved successfully');
+            }
+            setupEventListeners() {
+               const messageInput = document.getElementById('messageInput');
+               const modelSelect = document.getElementById('modelSelect');
+               const sendBtn = document.getElementById('sendBtn');
+               const newChatBtn = document.getElementById('newChatBtn');
+               const clearChatBtn = document.getElementById('clearChatBtn');
+               const settingsBtn = document.getElementById('settingsBtn');
+               const settingsModal = document.getElementById('settingsModal');
+               const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+               const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+               const testConnectionBtn = document.getElementById('testConnectionBtn');
+               const addModelBtn = document.getElementById('addModelBtn');
+               const addModelInput = document.getElementById('addModelInput');
+               const terminalClose = document.getElementById('terminalClose');
+               const sidebarToggle = document.getElementById('sidebarToggle');
+               const sidebar = document.getElementById('sidebar');
+
+               messageInput.addEventListener('keydown', (e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                     e.preventDefault();
+                     if (this.state.isStreaming) {
+                        this.stopStreaming();
+                     } else {
+                        this.sendMessage();
+                     }
+                  }
+               });
+
+               messageInput.addEventListener('input', () => {
+                  this.autoResize(messageInput);
+               });
+
+               modelSelect.addEventListener('change', async (e) => {
+                  this.state.selectedModel = e.target.value;
+                  await this.saveAppState('selectedModel', e.target.value);
+                  this.updateUI();
+               });
+
+               sendBtn.addEventListener('click', () => {
+                  if (this.state.isStreaming) {
+                     this.stopStreaming();
+                  } else {
+                     this.sendMessage();
+                  }
+               });
+
+               newChatBtn.addEventListener('click', () => {
+                  this.createNewChat();
+               });
+
+               clearChatBtn.addEventListener('click', () => {
+                  this.clearChat();
+               });
+
+               settingsBtn.addEventListener('click', () => {
+                  this.showSettings();
+               });
+
+               cancelSettingsBtn.addEventListener('click', () => {
+                  this.hideSettings();
+               });
+
+               saveSettingsBtn.addEventListener('click', () => {
+                  this.saveSettingsFromModal();
+               });
+
+               testConnectionBtn.addEventListener('click', () => {
+                  this.testConnection();
+               });
+
+               addModelBtn.addEventListener('click', () => {
+                  const modelName = addModelInput.value.trim();
+                  this.pullModel(modelName);
+               });
+
+               addModelInput.addEventListener('keydown', (e) => {
+                  if (e.key === 'Enter') {
+                     e.preventDefault();
+                     const modelName = addModelInput.value.trim();
+                     this.pullModel(modelName);
+                  }
+               });
+
+               terminalClose.addEventListener('click', () => {
+                  document.getElementById('terminal').classList.remove('visible');
+               });
+
+               settingsModal.addEventListener('click', (e) => {
+                  if (e.target === settingsModal) {
+                     this.hideSettings();
+                  }
+               });
+
+               sidebarToggle.addEventListener('click', () => {
+                  sidebar.classList.toggle('open');
+               });
+
+               document.addEventListener('click', (e) => {
+                  if (
+                     window.innerWidth <= 768 &&
+                     !sidebar.contains(e.target) &&
+                     !sidebarToggle.contains(e.target)
+                  ) {
+                     sidebar.classList.remove('open');
+                  }
+               });
+            }
+            async init() {
+               try {
+                  this.showLoading('Initializing application...');
+                  this.showLoading('Setting up database...');
+                  await this.initDB();
+
+                  this.showLoading('Loading settings...');
+                  await this.loadSettings();
+
+                  this.showLoading('Loading your chats...');
+                  await this.loadChats();
+
+                  this.showLoading('Restoring session...');
+                  const lastModel = await this.loadAppState('selectedModel');
+                  const lastChatId = await this.loadAppState('currentChatId');
+
+                  if (lastModel) this.state.selectedModel = lastModel;
+                  if (lastChatId && this.state.chats[lastChatId]) {
+                     this.state.currentChatId = lastChatId;
+                  }
+
+                  this.showLoading('Connecting to Ollama...');
+                  await this.loadModels();
+
+                  this.setupEventListeners();
+                  this.updateUI();
+                  this.hideLoading();
+               } catch (error) {
+                  console.error('Failed to initialize app:', error);
+                  this.hideLoading();
+                  await this.showNotification(
+                     'error',
+                     'Initialization Failed',
+                     'Failed to initialize application. Some features may not work properly.'
+                  );
+                  await this.loadModels();
+                  this.setupEventListeners();
+                  this.updateUI();
+               }
+            }
+         }
+
+         const app = new OllamaChatApp();
+         app.init();
          const app=new OllamaChatApp();app.init();
       </script>
    </body>

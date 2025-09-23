@@ -1274,8 +1274,8 @@
                <div class="setting-help">Default: http://localhost:11434</div>
             </div>
             <div class="setting-group">
-               <label class="setting-label" for="temperature">Temperature (0-1)</label>
-               <input type="number" class="setting-input" id="temperature" min="0" max="1" step="0.1" value="0.7">
+               <label class="setting-label" for="temperature">Temperature (0-2)</label>
+               <input type="number" class="setting-input" id="temperature" min="0" max="2" step="0.1" value="0.7">
                <div class="setting-help">Controls randomness. Lower = more focused, Higher = more creative</div>
             </div>
             <div class="setting-group">
@@ -2402,8 +2402,26 @@
 
             async saveSettingsFromModal() {
                const ollamaUrl = document.getElementById('ollamaUrl').value;
-               const temperature = parseFloat(document.getElementById('temperature').value);
-               const topP = parseFloat(document.getElementById('topP').value);
+               let temperature = parseFloat(document.getElementById('temperature').value);
+               let topP = parseFloat(document.getElementById('topP').value);
+
+               // Clamp and validate temperature (0-2)
+               if (isNaN(temperature)) {
+                  temperature = 0.7; // default
+               } else {
+                  temperature = Math.max(0, Math.min(2, temperature));
+               }
+
+               // Clamp and validate topP (0-1)
+               if (isNaN(topP)) {
+                  topP = 0.9; // default
+               } else {
+                  topP = Math.max(0, Math.min(1, topP));
+               }
+
+               // Update input values to clamped values for UI consistency
+               document.getElementById('temperature').value = temperature;
+               document.getElementById('topP').value = topP;
 
                const newSettings = { ollamaUrl, temperature, topP };
                await this.saveSettings(newSettings);

@@ -1443,6 +1443,7 @@
                this.streamingUpdateThrottle = false;     // Throttle flag for streaming updates
                this.lastStreamingUpdate = 0;             // Last streaming update timestamp
                this.currentStream = null;                // Current fetch stream controller
+               this.eventListeners = new Map();          // Track event listeners for cleanup
                this.state = {
                   currentChatId: null,                   // ID of currently active chat
                   chats: {},                             // In-memory cache of all chats
@@ -1568,6 +1569,8 @@
                      if (!this.db.objectStoreNames.contains('chats')) {
                         const chatStore = this.db.createObjectStore('chats', { keyPath: 'id' });
                         chatStore.createIndex('createdAt', 'createdAt', { unique: false });
+                        // Add model index for better querying
+                        chatStore.createIndex('model', 'model', { unique: false });
                      }
 
                      // Create settings store with key as primary key
@@ -1597,6 +1600,12 @@
                   this.showSaving();
                } catch (error) {
                   console.error('Error saving chat:', error);
+                  if (error.name === 'QuotaExceededError') {
+                     await this.showNotification('error', 'Storage Full', 'Please delete some chats to free up space');
+                  } else if (error.name === 'InvalidStateError') {
+                     // Handle database corruption
+                     await this.showNotification('error', 'Database Error', 'Database corrupted. Please refresh the page.');
+                  }
                }
             }
             /**
@@ -1617,6 +1626,10 @@
                   });
                } catch (error) {
                   console.error('Error loading chats:', error);
+                  if (error.name === 'InvalidStateError') {
+                     // Handle database corruption
+                     await this.showNotification('error', 'Database Error', 'Database corrupted. Please refresh the page.');
+                  }
                }
             }
             /**
@@ -1799,6 +1812,28 @@
              */
             hideLoading() {
                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+
+            /**
+             * Add event listener with tracking for cleanup
+             * @param {Element} element - DOM element to attach listener to
+             * @param {string} event - Event type
+             * @param {Function} handler - Event handler function
+             */
+            addTrackedEventListener(element, event, handler) {
+               element.addEventListener(event, handler);
+               const key = `${element.tagName}-${element.id || element.className}-${event}`;
+               this.eventListeners.set(key, { element, event, handler });
+            }
+
+            /**
+             * Remove all tracked event listeners
+             */
+            removeAllEventListeners() {
+               this.eventListeners.forEach(({ element, event, handler }) => {
+                  element.removeEventListener(event, handler);
+               });
+               this.eventListeners.clear();
             }
 
             /**
@@ -2928,7 +2963,7 @@
                const chatList = document.getElementById('chatList');
 
                // Handle message input submission (Enter key)
-               messageInput.addEventListener('keydown', (e) => {
+               this.addTrackedEventListener(messageInput, 'keydown', (e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                      e.preventDefault();
                      if (this.state.isStreaming) {
@@ -2940,19 +2975,19 @@
                });
 
                // Auto-resize message input as user types
-               messageInput.addEventListener('input', () => {
+               this.addTrackedEventListener(messageInput, 'input', () => {
                   this.autoResize(messageInput);
                });
 
                // Handle model selection changes
-               modelSelect.addEventListener('change', async (e) => {
+               this.addTrackedEventListener(modelSelect, 'change', async (e) => {
                   this.state.selectedModel = e.target.value;
                   await this.saveAppState('selectedModel', e.target.value);
                   this.updateUI();
                });
 
                // Handle send/stop button clicks
-               sendBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(sendBtn, 'click', () => {
                   if (this.state.isStreaming) {
                      this.stopStreaming();
                   } else {
@@ -2961,43 +2996,43 @@
                });
 
                // Handle new chat button clicks
-               newChatBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(newChatBtn, 'click', () => {
                   this.createNewChat();
                });
 
                // Handle clear chat button clicks
-               clearChatBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(clearChatBtn, 'click', () => {
                   this.clearChat();
                });
 
                // Handle settings button clicks
-               settingsBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(settingsBtn, 'click', () => {
                   this.showSettings();
                });
 
                // Handle cancel settings button clicks
-               cancelSettingsBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(cancelSettingsBtn, 'click', () => {
                   this.hideSettings();
                });
 
                // Handle save settings button clicks
-               saveSettingsBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(saveSettingsBtn, 'click', () => {
                   this.saveSettingsFromModal();
                });
 
                // Handle test connection button clicks
-               testConnectionBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(testConnectionBtn, 'click', () => {
                   this.testConnection();
                });
 
                // Handle add model button clicks
-               addModelBtn.addEventListener('click', () => {
+               this.addTrackedEventListener(addModelBtn, 'click', () => {
                   const modelName = addModelInput.value.trim();
                   this.pullModel(modelName);
                });
 
                // Handle Enter key in add model input
-               addModelInput.addEventListener('keydown', (e) => {
+               this.addTrackedEventListener(addModelInput, 'keydown', (e) => {
                   if (e.key === 'Enter') {
                      e.preventDefault();
                      const modelName = addModelInput.value.trim();
@@ -3006,29 +3041,29 @@
                });
 
                // Handle terminal close button clicks
-               terminalClose.addEventListener('click', () => {
+               this.addTrackedEventListener(terminalClose, 'click', () => {
                   document.getElementById('terminal').classList.remove('visible');
                });
 
                // Handle clicking outside settings modal to close it
-               settingsModal.addEventListener('click', (e) => {
+               this.addTrackedEventListener(settingsModal, 'click', (e) => {
                   if (e.target === settingsModal) {
                      this.hideSettings();
                   }
                });
 
                // Handle sidebar toggle for mobile
-               sidebarToggle.addEventListener('click', () => {
+               this.addTrackedEventListener(sidebarToggle, 'click', () => {
                   sidebar.classList.toggle('open');
                });
 
                // Handle theme toggle button clicks
-               themeToggle.addEventListener('click', () => {
+               this.addTrackedEventListener(themeToggle, 'click', () => {
                   this.toggleTheme();
                });
 
                // Handle clicking outside sidebar to close it on mobile
-               document.addEventListener('click', (e) => {
+               this.addTrackedEventListener(document, 'click', (e) => {
                   if (
                      window.innerWidth <= 768 &&
                      !sidebar.contains(e.target) &&
@@ -3039,7 +3074,7 @@
                });
 
                // Use event delegation for chat list items
-               chatList.addEventListener('click', (e) => {
+               this.addTrackedEventListener(chatList, 'click', (e) => {
                   const chatItem = e.target.closest('.chat-item');
                   if (chatItem) {
                      const chatId = chatItem.dataset.chatId;

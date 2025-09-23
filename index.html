@@ -2327,7 +2327,7 @@
                   if (this.state.connectionError === 'CORS_ERROR') {
                      diagnostics.push({
                         status: 'warning',
-                        message: '⚠ CORS not enabled - Start Ollama with: set OLLAMA_ORIGINS=* && ollama serve'
+                        message: '⚠ CORS not enabled - Start Ollama with: export OLLAMA_ORIGINS=* && ollama serve'
                      });
                   }
                }
@@ -2387,7 +2387,7 @@
                } catch (error) {
                   let errorMessage = '';
                   if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                     errorMessage = 'CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Windows):\n1. Stop Ollama\n2. Start with: set OLLAMA_ORIGINS=* && ollama serve\n3. Or set environment: setx OLLAMA_ORIGINS "*"';
+                     errorMessage = 'CORS Error: Ollama server is not configured to allow web browser connections.\n\nSolution (Linux):\n1. Stop Ollama\n2. Start with: export OLLAMA_ORIGINS=* && ollama serve\n3. Or set environment: echo \'export OLLAMA_ORIGINS="*"\' >> ~/.bashrc && source ~/.bashrc';
                   } else {
                      errorMessage = `Error: ${error.message}`;
                   }
